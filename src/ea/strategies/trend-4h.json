@@ -1,0 +1,26 @@
+{
+  "id": "trend-4h",
+  "name": "4-hour breakout trend-follower",
+  "source": "The bot's own trend mode (V1_STRATEGY=trend, 24 Oct 2026), rewritten as formulas. It is the check that the EA engine reproduces a hand-coded strategy exactly.",
+  "notes": "Tested 2015-2024 as trend mode on 24 Oct 2026: failed (437 trades, -0.019R a trade). Not for live trading.",
+  "timeframe": "4h",
+  "indicators": {
+    "sma200": "SMA(close, 200)",
+    "hh20": "HIGHEST(high, 20)",
+    "ll20": "LOWEST(low, 20)",
+    "atr20": "ATR(20)",
+    "ll10": "LOWEST(low, 10)",
+    "hh10": "HIGHEST(high, 10)"
+  },
+  "buy": {
+    "when": "close > sma200 and close > hh20[2]",
+    "stop": "entry - 2 * atr20",
+    "trail": "ll10"
+  },
+  "sell": {
+    "when": "close <= sma200 and close < ll20[2]",
+    "stop": "entry + 2 * atr20",
+    "trail": "hh10"
+  },
+  "options": { "maxOpen": 1, "holdOvernight": true }
+}
