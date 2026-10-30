@@ -11,3 +11,4 @@ Every replay run, in order. The number of rows is the number of tries — the mo
 | 2026-10-24 | screen | daily-trend | `{"V1_DAILY_TREND":"1"}` | 700 | -0.038 | -0.93 | 79.2% | SCREEN FAIL |
 | 2026-10-24 | screen | sweep-0.25atr | `{"V1_SWEEP_ATR":"0.25"}` | 573 | -0.108 | -2.34 | 32.3% | SCREEN FAIL |
 | 2026-10-24 | screen | setup-1h | `{"V1_SETUP_TF":"1h"}` | 1328 | -0.056 | -1.84 | 50.4% | SCREEN FAIL |
+| 2026-10-30 | screen | cost-cap-5pct | `{"COST_MAX_FRAC":"0.05"}` | 269 | -0.062 | -1.07 | 39.0% | TOO FEW TRADES |
