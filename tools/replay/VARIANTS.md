@@ -45,3 +45,4 @@ Every replay run, in order. The number of rows is the number of tries — the mo
 | 2026-10-30 | screen | v1-signal | `{}` | 1554 | -0.046 | -1.66 | 81.0% | SCREEN FAIL |
 | 2026-10-30 | screen | sweep-mss | `{"V1_ENTRY":"sweep_mss"}` | 2374 | -0.061 | -2.73 | 65.1% | SCREEN FAIL |
 | 2026-10-30 | screen | asian-bench | `{"V1_ENTRY":"asian_breakout"}` | 122 | -0.345 | -3.62 | 0.1% | TOO FEW TRADES |
+| 2026-10-30 | rest | asian-fade | `{"V1_ENTRY":"asian_fade"}` | 13 | +0.392 | 0.94 | — | PART OF DEVELOPMENT — judge it together with its screen run |
