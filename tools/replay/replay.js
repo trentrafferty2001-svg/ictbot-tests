@@ -47,7 +47,7 @@ const RATE = parseFloat(arg('rate', '18'));
 const RANDOM_K = parseInt(arg('random', '1000'), 10);
 const SYNTHETIC = !!arg('synthetic', false);
 const SEED = parseInt(arg('seed', '1'), 10);
-const WARMUP_DAYS = 70;
+const WARMUP_DAYS = parseInt(arg('warmup', '70'), 10);   // days of history before --from (daily strategies need more)
 const LABEL = String(arg('label', ''));
 // ── market (added 2026-10-30): gold, or XM's US100Cash#, GER40Cash#, BTCUSD#
 // Hours are XM server time (minutes): the broker's open/close, and the bot's

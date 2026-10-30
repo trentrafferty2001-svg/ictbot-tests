@@ -32,7 +32,7 @@ if (isIct) minTrades = period === 'screen' || period === 'rest' ? 150 : 300;
 // EA strategies (V1_STRATEGY=ea, src/ea/strategies), rules E1-E5. Added 2026-10-30.
 const isEa = runs.some(r => String(((r.settings || {}).env || {}).V1_STRATEGY || '').toLowerCase() === 'ea');
 const eaId = isEa ? String(((runs[0].settings || {}).env || {}).V1_EA || '') : '';
-if (isEa) minTrades = period === 'screen' || period === 'rest' ? 150 : 300;
+if (isEa) minTrades = eaId === 'turtle-55d' ? 100 : period === 'screen' || period === 'rest' ? 150 : 300;
 
 const mean = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : NaN;
 const sd = a => { if (a.length < 2) return NaN; const m = mean(a); return Math.sqrt(a.reduce((x, y) => x + (y - m) * (y - m), 0) / (a.length - 1)); };
@@ -90,12 +90,23 @@ if (period === 'final' && (isTrend || isIct || isIctPlus || isEa)) {
   add('C2', 'random-entry percentile not extreme (5–95)', !(pct > 95 || pct < 5));
 } else if (isEa) {
   // an EA strategy's rules (RULES.md, "EA strategies", written before any run)
+  if (eaId === 'turtle-55d') {
+    // Turtle System 2, judged on all its markets' results together (put every
+    // market's results in one --dir). RULES.md, written before any run.
+    const jp = yearRows.filter(r => r.n >= 10);
+    add('P1', 'at least 100 trades (all markets)', n >= 100);
+    add('P2', 'mean R > 0 after costs and swaps with t ≥ 2.5', m > 0 && t >= 2.5);
+    add('P3', 'beats ≥ 95% of random-entry runs (same exits)', pct >= 95);
+    add('P4', 'positive in ≥ 60% of years (years with ≥ 10 trades)', jp.length > 0 && jp.filter(r => r.m > 0).length / jp.length >= 0.6);
+    add('P5', 'still positive with costs and swaps × 1.5', m15 > 0);
+  } else {
   add('E1', 'at least ' + minTrades + ' trades', n >= minTrades);
   add('E2', 'mean R > 0 after costs and swaps with t ≥ 3', m > 0 && t >= 3);
   add('E3', 'beats ≥ 95% of random-entry runs (same exits)', pct >= 95);
   const je = yearRows.filter(r => r.n >= 15);
   add('E4', 'positive in ≥ 60% of years (years with ≥ 15 trades)', je.length > 0 && je.filter(r => r.m > 0).length / je.length >= 0.6);
   add('E5', 'still positive with costs and swaps × 1.5', m15 > 0);
+  }
 } else if (isTrend) {
   // trend mode's rules (RULES.md, written before its first run)
   add('T1', 'at least ' + minTrades + ' trades', n >= minTrades);

@@ -230,3 +230,23 @@ What differs from the ICT 2022 model: **no raid or structure shift is required**
 **Pass rules.** The same as each setup's on gold: I1–I5, with I4 over years with 30+ trades for the 2022 model and 15+ for Silver Bullet and OTE. A pass counts only for the market it happened on. **Control:** one random-price run per market (ICT 2022, 5-minute), because the market code in the replay is new. **Final (2025–Oct 2026):** once, only for a setup and market that passed development.
 
 **Counting the tries.** These are 12 more rows in the variant log. With t ≥ 3 required, the chance that any one of them passes by luck alone is about 1 in 700, and about 1 in 60 that at least one of the 12 does. A single pass is still a reason for its final test, not for live money.
+
+## Turtle System 2 on four markets (`V1_STRATEGY=ea`, `V1_EA=turtle-55d`): rules written 30 Oct 2026, before any run
+
+**Why this one.** Trend-following is the strategy family with the longest published record across many markets (Hurst, Ooi and Pedersen, *A Century of Evidence on Trend-Following Investing*, AQR 2017). Its case rests on spreading one simple rule over several markets, so a bad year in one is covered by others. The Turtle traders' System 2 is its best-known fully published rule set. On daily candles its stops are wide, so the spread costs a small share of each trade, which is where every intraday ICT test lost.
+
+**The strategy** is the file `src/ea/strategies/turtle-55d.json`: buy when the daily close is above the highest high of the 55 days before; sell when it closes below the lowest low. Stop 2N (N = ATR(20)). Exit at the 20-day low for buys and the 20-day high for sells. No target. One position per market, held overnight. Its notes list where it differs from the original Turtle rules and why.
+
+**Runs.** Gold, Nasdaq (`US100Cash#`), DAX (`GER40Cash#`) and bitcoin (`BTCUSD#`), 2015–2024, each in **one** job (period `decade`), so trades lasting months aren't cut at year ends. Cycle 60 minutes (it acts within an hour of each daily close). Lot cap 0.02. Test account R1,000,000 (`balance` input), so the minimum lot never decides whether a trade is taken: on daily stops (2N ≈ $100–160 on gold) one 0.01 lot risks about R2,000–3,000, more than v1's 1% limit allows on smaller accounts. A live account would need to be big enough for the same reason. Swaps charged at the replay's estimates (0.025% of the price a night for buys, 0.008% for sells, triple on Wednesdays). These come from a gold sample, so check each market's real swaps in MT5 before trading it.
+
+**Judged on all four markets together: all five must hold.**
+
+| | Rule | Why |
+|---|---|---|
+| P1 | At least 100 trades in total | A daily system trades a few times a year per market |
+| P2 | Mean R > 0 after costs and swaps, with t ≥ 2.5 | Fewer, longer trades; still a high bar after many tries |
+| P3 | Beats ≥ 95% of random-entry runs with the same exits | The breakouts must add something over random timing and direction |
+| P4 | Positive in at least 60% of the years with 10+ trades | Trend-following has bad years, but most must pay |
+| P5 | Still positive with costs and swaps raised by 50% | Real swaps on CFDs may be worse than modelled |
+
+Each market's own result is reported but not required to pass. **Final (2025–Oct 2026)** runs once, only if the four together pass. Nothing is tuned after a run: other lookbacks (20/10, 100/50...) would be new strategies and new rows in the variant log.

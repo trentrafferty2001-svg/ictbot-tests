@@ -8,9 +8,9 @@ on:
   workflow_dispatch:
     inputs:
       period:
-        description: "smoke = 1-month check · screen = 2020-2024 (half the minutes) · rest = 2015-2019 · development = 2015-2024 · final = 2025-26 (run ONCE, at the very end) · data = save 2015-2026 prices to the replay-data branch, no replay · control = random data"
+        description: "decade = 2015-2024 in ONE job (daily strategies: trades can last months) · smoke = 1-month check · screen = 2020-2024 (half the minutes) · rest = 2015-2019 · development = 2015-2024 · final = 2025-26 (run ONCE, at the very end) · data = save 2015-2026 prices to the replay-data branch, no replay · control = random data"
         type: choice
-        options: [smoke, screen, rest, development, final, control, data]
+        options: [smoke, screen, rest, development, decade, final, control, data]
         default: smoke
       label:
         description: "Name of this run in the variant log"
@@ -27,6 +27,9 @@ on:
       cycle:
         description: "Minutes between bot cycles (the live bot: 3; trend tests use 15 to save minutes)"
         default: "3"
+      balance:
+        description: "Test account size in ZAR (default 90000)"
+        default: "90000"
       market:
         description: "gold = XAUUSD · nas = US100Cash# · ger = GER40Cash# · btc = BTCUSD#"
         type: choice
@@ -59,6 +62,7 @@ jobs:
             screen)      echo 'parts=["2020","2021","2022","2023","2024"]' >> "$GITHUB_OUTPUT" ;;
             rest)        echo 'parts=["2015","2016","2017","2018","2019"]' >> "$GITHUB_OUTPUT" ;;
             development) echo 'parts=["2015","2016","2017","2018","2019","2020","2021","2022","2023","2024"]' >> "$GITHUB_OUTPUT" ;;
+            decade)      echo 'parts=["2015-2024"]' >> "$GITHUB_OUTPUT" ;;
             final)       echo 'parts=["2025","2026"]' >> "$GITHUB_OUTPUT" ;;
             control)     echo 'parts=["2019","2023"]' >> "$GITHUB_OUTPUT" ;;
             data)        echo 'parts=["2015","2016","2017","2018","2019","2020","2021","2022","2023","2024","2025","2026"]' >> "$GITHUB_OUTPUT" ;;
@@ -89,7 +93,13 @@ jobs:
         id: d
         run: |
           P="${{ matrix.part }}"
-          if [ "${#P}" = 7 ]; then
+          if [ "${#P}" = 9 ]; then
+            A="${P%-*}"; B="${P#*-}"
+            echo "from=$A-01-01" >> "$GITHUB_OUTPUT"
+            echo "to=$((B+1))-01-01" >> "$GITHUB_OUTPUT"
+            echo "dfrom=$(date -u -d "$A-01-01 -130 days" +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+            echo "dto=$((B+1))-01-03" >> "$GITHUB_OUTPUT"
+          elif [ "${#P}" = 7 ]; then
             echo "from=$P-01" >> "$GITHUB_OUTPUT"
             echo "to=$(date -u -d "$P-01 +1 month" +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
             echo "dfrom=$(date -u -d "$P-01 -75 days" +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
@@ -123,7 +133,8 @@ jobs:
           fi
           node tools/replay/replay.js --from ${{ steps.d.outputs.from }} --to ${{ steps.d.outputs.to }} \
             --out results/${{ matrix.part }}.json --spread-mult "${{ inputs.spread_mult }}" --cycle "${{ inputs.cycle || 3 }}" \
-            --env "${{ inputs.settings }}" --label "${{ inputs.label }}" --market "${{ inputs.market || 'gold' }}" $EXTRA
+            --env "${{ inputs.settings }}" --label "${{ inputs.label }}" --market "${{ inputs.market || 'gold' }}" \
+            --warmup "${{ inputs.period == 'decade' && '120' || '70' }}" --balance "${{ inputs.balance || '90000' }}" $EXTRA
       - uses: actions/upload-artifact@v4
         with:
           name: replay-${{ matrix.part }}
@@ -204,6 +215,8 @@ jobs:
           for i in 1 2 3 4 5; do
             if git fetch -q origin "$GITHUB_REF_NAME" && git reset -q --hard FETCH_HEAD; then
               mkdir -p verdicts && cp verdict.md "$F" && git add "$F"
+              # each run's trades too (results/*.json), for judging several runs together
+              if [ -d results ] && ls results/*.json >/dev/null 2>&1; then D="${F%.md}"; mkdir -p "$D" && cp results/*.json "$D/" && git add "$D"; fi
               git commit -q -m "Verdict: ${{ inputs.label }} (${{ inputs.period }}) [skip ci]" || exit 0
               git push -q origin HEAD:"$GITHUB_REF_NAME" && exit 0
             fi

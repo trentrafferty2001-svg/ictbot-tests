@@ -1,0 +1,25 @@
+{
+  "id": "turtle-55d",
+  "name": "Turtle System 2: daily 55-day breakout",
+  "source": "The Turtle traders' System 2 (Richard Dennis and William Eckhardt, 1983), as published in 'The Original Turtle Trading Rules' (Faith et al., 2003) and Curtis Faith, 'Way of the Turtle' (2007). Trend-following is the strategy family with the longest published record across many markets (Hurst, Ooi and Pedersen, 'A Century of Evidence on Trend-Following Investing', AQR, 2017).",
+  "notes": "Written 30 Oct 2026 before any run. Choices where this differs from the original: the breakout is a daily CLOSE beyond the 55-day high/low of the earlier days (the Turtles used a stop order one tick beyond it intraday), because rules here run on finished candles; N is MT5's ATR(20) (the Turtles' N was a 20-day exponential average of the true range); one position per market, no adding units (the Turtles added up to 4 units every N/2); size from v1's risk per trade on the 2N stop. Stop 2N; exit at the 20-day low (buys) or high (sells), the System 2 exit. No target. Held overnight; swaps are charged.",
+  "timeframe": "1d",
+  "indicators": {
+    "hh55": "HIGHEST(high, 55)",
+    "ll55": "LOWEST(low, 55)",
+    "ll20": "LOWEST(low, 20)",
+    "hh20": "HIGHEST(high, 20)",
+    "n20": "ATR(20)"
+  },
+  "buy": {
+    "when": "close > hh55[2]",
+    "stop": "entry - 2 * n20",
+    "trail": "ll20"
+  },
+  "sell": {
+    "when": "close < ll55[2]",
+    "stop": "entry + 2 * n20",
+    "trail": "hh20"
+  },
+  "options": { "maxOpen": 1, "holdOvernight": true }
+}
