@@ -255,6 +255,33 @@ if (n) {
     splitTable('By holding time', groupBy(hold), isTrend ? ['under a day', '1–3 days', '3–7 days', '7 days or more'] : ['held under 1h', '1–3h', '3–7.5h', '7.5h or more (time limit)']);
   }
 }
+// Signal study (added 2026-10-30, rule S1 in RULES.md): do the entries point
+// the right way at all? The move in the trade's direction after entry, before
+// costs, with no stop or exits, less the same move at the same clock time on
+// nearby days (drift). Trades on one day are added up first (dayT), since
+// trades held for hours overlap and aren't independent.
+const dayT = (rows, val) => { const g = {}; for (const x of rows) { const v = val(x); if (!Number.isFinite(v)) continue; const d = String(x.ts).slice(0, 10); g[d] = (g[d] || 0) + v; } return tstat(Object.values(g)); };
+const withFwd = trades.filter(t => t.fwd && typeof t.fwd.r60 === 'number');
+if (withFwd.length) {
+  const medCost = (() => { const a = withFwd.map(t => t.costFrac).filter(x => typeof x === 'number').sort((x, y) => x - y); return a.length ? a[Math.floor(a.length / 2)] : NaN; })();
+  L.push('', '## Signal study: do the entries point the right way?', '',
+    'Price move in the trade\'s direction after entry, in R, before costs and ignoring stops and exits. "Edge" is that move less the same move at the same time on nearby days. t is from daily totals.', '',
+    '| After | Trades | Move | Edge | t (daily) |', '|---|---|---|---|---|');
+  let s1 = null;
+  for (const h of [15, 30, 60, 120]) {
+    const rows = withFwd.filter(t => typeof t.fwd['r' + h] === 'number' && typeof t.fwd['d' + h] === 'number');
+    if (!rows.length) continue;
+    const edge = x => x.fwd['r' + h] - x.fwd['d' + h], me = mean(rows.map(edge)), te = dayT(rows, edge);
+    L.push('| ' + h + ' min | ' + rows.length + ' | ' + f2(mean(rows.map(x => x.fwd['r' + h]))) + ' | ' + f2(me) + ' | ' + (Number.isFinite(te) ? te.toFixed(2) : '—') + ' |');
+    if (h === 60) s1 = { me, te };
+  }
+  if (s1) {
+    const ok = s1.me > medCost && s1.te >= 2;
+    L.push('', (ok ? '✅' : '❌') + ' S1: edge after 60 min (' + f2(s1.me) + 'R) is bigger than the median cost (' + f2(medCost) + 'R) with t ≥ 2 (' + (Number.isFinite(s1.te) ? s1.te.toFixed(2) : '—') + ').' +
+      (ok ? ' The entries do point the right way; the exits or the costs are where the result is lost.' : ' Not shown that the entries point the right way by more than they cost (it needs both), so changing the exits is unlikely to make them pay; change or simplify the entry.'));
+  }
+} else if (n) L.push('', '## Signal study', '', 'Not in these results (replayed before 2026-10-30): run the replay again to get it.');
+if (n) L.push('', 'Mean R with t from daily totals instead of single trades (overlapping trades aren\'t independent): t = ' + (Number.isFinite(dayT(trades, x => x.r)) ? dayT(trades, x => x.r).toFixed(2) : '—') + ' (the rules use the single-trade t above).');
 const blocks = {}; for (const r of runs) for (const k of Object.keys(r.blocks || {})) blocks[k] = (blocks[k] || 0) + r.blocks[k];
 const topBlocks = Object.keys(blocks).sort((a, b) => blocks[b] - blocks[a]).slice(0, 6);
 if (topBlocks.length) { L.push('', '## Entries refused (cycles)', ''); for (const k of topBlocks) L.push('- ' + k + ': ' + blocks[k]); }

@@ -57,6 +57,15 @@ To test a **variant**, put its settings in the *settings* box, e.g. `TRAIL_ATR_M
 - The reason for testing it: costs are a median 8% of a 15-minute stop, more than the entries' edge over random entries, and a 1-hour ATR is about twice as big.
 - It runs as a screen first, like the others, at this one definition.
 
+**Written 30 Oct 2026, after the setup-1h screen failed and before running any of these.** They come from two research reports (papers and articles; books on systematic trading) that agreed costs are the main problem and that the entries may have no edge at all:
+- **Signal study (rule S1), a diagnostic, not a variant.** Every replay now records how far price went the trade's way 15, 30, 60 and 120 minutes after entry, before costs and ignoring the stop and exits, less the same move at the same clock time on the 5 trading days either side (drift). The verdict shows it under "Signal study". **S1 holds when the 60-minute edge is bigger than the median cost (both in R) with t ≥ 2 from daily totals.** It isn't one of the pass rules: it says where a failure comes from. If S1 fails on v1's development run, no exit change can rescue the entries, so stop tuning exits. It costs nothing new: re-run development (or screen) for v1 and read the section.
+- **The cost cap at 5% of the stop is `COST_MAX_FRAC=0.05`** (was 10%). No code change. It may leave fewer than 1,000 trades; then the run reads TOO FEW TRADES and the idea fails as tested.
+- **Skipping quiet markets is `V1_VOL_FLOOR=0.33`.** No new trades while the last completed day's ATR(14) ranks in the bottom third of the up to 60 days before it. With fewer than 30 earlier days (the first weeks of each replay year, which loads 75 days of history) it doesn't block. Tested at 0.33 only, and not together with the cost cap.
+- **`V1_ENTRY=sweep_mss` is the ICT core alone:** a confirmed structure shift (CHoCH or confirmed BOS) on the 15-minute chart plus a liquidity sweep the same way in the last 5 candles (a wick past an earlier swing that closed back, any depth). No fair value gap, order block, top-down bias, score, quality gate or conflict-flag skip; every exit, cost check, size, hour and news gate as in v1.
+- **`V1_ENTRY=asian_breakout` is a plain benchmark, not a candidate to trade:** the Asian range is the high and low of the 15-minute candles from 19:00 to 03:00 New York time; from 03:00 to 06:00 New York, the first completed candle to close outside it trades that way, at most one trade per candle; same exits and gates as v1. If v1's entries don't beat this, the ICT entries add nothing over a naive rule.
+- For both `V1_ENTRY` rules, D6 (higher scores do better) is meaningless, because the score no longer picks trades; judge them on D1–D5 and say so.
+- Each runs as a screen first. A screen pass runs rest, and a development pass runs final, as before.
+
 ## What the replay does not model
 
 - News: only US payrolls (first Friday, 08:30 New York) are known to the replay, so it may take a few trades the live bot would skip around CPI or FOMC.

@@ -5077,7 +5077,7 @@ async function placeTrade(cfg, analysis, balance, consecLosses, consecWins, regi
     if (V1) {
         // Same entry rule as before v1 (2026-08-18): 6+ conflict flags = skip.
         const nConf = countConflicts(analysis.hits);
-        if (nConf >= 6) return { order: null, error: nConf + ' conflict flags', v1Block: 'conflicts' };
+        if (nConf >= 6 && !analysis._v1Alt) return { order: null, error: nConf + ' conflict flags', v1Block: 'conflicts' };
         const slD = Math.abs(entry - validatedSl), acct = global._v1Account || {};
         const riskPct = Math.min(cfg._riskConfigured > 0 ? cfg._riskConfigured : V1.riskCapPct, V1.riskCapPct);
         v1Size = v1PositionSize({ balance, riskPct, slDist: slD, lossTickValue: parseFloat(quotePd.lossTickValue) || 0, tickSize: spec.tickSize, contractSize: spec.contractSize, accountCurrency: acct.currency, minVolume: spec.minVolume, maxVolume: Math.min(spec.maxVolume || 100, V1.maxLots), volumeStep: spec.volumeStep, minLotRiskMult: V1.minLotRiskMult });
@@ -5370,6 +5370,8 @@ function v1Settings() {
         eaId: String(sv.v1Ea || process.env.V1_EA || '').trim().toLowerCase(),  // EA mode: which src/ea/strategies/<id>.json
         ictTf: String(sv.v1IctTf || process.env.V1_ICT_TF || '5m').trim().toLowerCase() === '15m' ? '15m' : '5m',  // see ICT
         setupTf: String(sv.v1SetupTf || process.env.V1_SETUP_TF || '15m').trim().toLowerCase() === '1h' ? '1h' : '15m',  // see v1AnalysisFrames
+        volFloor: _v1Num(sv.v1VolFloor, 'V1_VOL_FLOOR', 0),            // 0 = off; see v1EntryFilters
+        entry: (e => ['sweep_mss', 'asian_breakout'].indexOf(e) !== -1 ? e : 'ict')(String(sv.v1Entry || process.env.V1_ENTRY || 'ict').trim().toLowerCase()),  // see v1AltSignal
         maxHoldHours: _v1Num(sv.v1MaxHoldHours, 'V1_MAX_HOLD_HOURS', 8),
         flattenBeforeBreak: _v1Bool(sv.flattenBeforeBreak, 'FLATTEN_BEFORE_BREAK', true),
         serverTrail: _v1Bool(sv.serverTrail, 'SERVER_TRAIL', true),
@@ -5720,8 +5722,15 @@ function v1AnalysisFrames(set, f) {
 // validateStopLoss / validateTakeProfit were set for 15-minute stops.
 function v1PriceCapMult() { try { const s = v1Settings(); return s.frozen && s.setupTf === '1h' ? 2 : 1; } catch (e) { return 1; } }
 let _v1LastEntryBar = 0;   // 1-hour setups: at most one new trade per 1-hour candle
-function v1EntryFilters(set, analysis, m15, atr) {
+function v1EntryFilters(set, analysis, m15, atr, volRank) {
     const isBuy = analysis.signal === 'buy';
+    if (set.volFloor > 0) {
+        // Warm-up: fewer than 30 earlier days to rank against, so no block.
+        if (volRank && volRank.n >= 30) {
+            if (volRank.rank < set.volFloor) return 'quiet market: daily ATR in the bottom ' + Math.round(set.volFloor * 100) + '% of the last ' + volRank.n + ' days (' + Math.round(volRank.rank * 100) + '%)';
+            analysis.hits.push('📈 Daily ATR at ' + Math.round(volRank.rank * 100) + '% of the last ' + volRank.n + ' days');
+        }
+    }
     if (set.dailyTrend) {
         const mt = analysis.macroTrend, d = mt && mt.daily && mt.daily.direction;
         if (d !== (isBuy ? 'bullish' : 'bearish')) return 'against the daily trend (' + (d || 'unknown') + ')';
@@ -6420,6 +6429,82 @@ function oteScan(candles, nowMs) {
     if (!s) return { why: 'no 1-hour move that broke structure and has turned' };
     if (s.beyond) return { kzKey: s.kzKey, why: 'the latest ' + s.dir + ' move went on past ' + s.moveEnd.toFixed(2) + ', waiting for it to turn' };
     return { kzKey: s.kzKey, setup: s };
+}
+
+// v1 option V1_VOL_FLOOR (0 = off): skip new trades while the market is
+// quiet, i.e. the last completed day's ATR(14) ranks in the bottom
+// V1_VOL_FLOOR share of the up to 60 days before it. In a quiet market the
+// stop is small and the spread a bigger share of it (the 2015-2024 replay:
+// costs a median 8% of the stop, more than the entries' edge). Both research
+// reports of 2026-10-30 suggested it; tested at 0.33 only. Daily candles are
+// fetched once a day only while the option is on. Added 2026-10-30.
+let _v1VolRank = { day: null, value: null };
+async function v1DailyAtrRank(cfg) {
+    const day = sastDateStr(new Date());
+    if (_v1VolRank.day === day) return _v1VolRank.value;
+    let value = null;
+    try {
+        const sym = await resolveSymbol(cfg);
+        const d = normalizeCandles(await maGet(cfg, '/historical-market-data/symbols/' + encodeURIComponent(sym) + '/timeframes/1d/candles?limit=90', true));
+        const done = Array.isArray(d) ? d.slice(0, -1) : [];   // the last daily bar is still forming
+        const atrs = [];
+        for (let i = 14; i < done.length; i++) {
+            let s = 0;
+            for (let j = i - 13; j <= i; j++) { const b = done[j], pc = done[j - 1].close; s += Math.max(b.high - b.low, Math.abs(b.high - pc), Math.abs(b.low - pc)); }
+            atrs.push(s / 14);
+        }
+        if (atrs.length >= 2) {
+            const now = atrs[atrs.length - 1], past = atrs.slice(-61, -1);
+            value = { rank: past.filter(x => x < now).length / past.length, n: past.length, atr: now };
+        }
+    } catch (e) { value = null; }
+    _v1VolRank = { day: value ? day : null, value };
+    return value;
+}
+
+// v1 option V1_ENTRY (default ict): replace the ICT score with one simple
+// entry rule, keeping every exit, cost check, size, hour and news gate. Two
+// rules, each tested at this one definition (written 2026-10-30, before any
+// run; see tools/replay/RULES.md):
+// - sweep_mss: the ICT core alone. A confirmed structure shift (CHoCH or a
+//   confirmed BOS) on the 15-minute chart, plus a liquidity sweep the same
+//   way in the last 5 candles (a wick past an earlier swing that closed back,
+//   any depth). No fair value gap, order block, top-down bias or score.
+// - asian_breakout: a plain benchmark. The Asian range is the high and low
+//   of the 15-minute candles from 19:00 to 03:00 New York time. From 03:00 to
+//   06:00 New York (London's morning), the first completed candle to close
+//   above the range buys, below it sells. At most one trade per candle.
+// The quality gate, the score bar and the conflict-flag skip belong to the
+// ICT score, so they don't apply; D6 (higher scores do better) means nothing
+// for these rules.
+let _v1AltBar = null;
+function v1AltSignal(entry, analysis, m15, atr) {
+    if (entry === 'sweep_mss') {
+        const mss = analysis.mss || {};
+        if (mss.dir !== 'bullish' && mss.dir !== 'bearish') return { signal: 'none', note: 'sweep_mss: no structure shift' };
+        if (mss.type !== 'CHoCH' && mss.type !== 'BOS_confirmed') return { signal: 'none', note: 'sweep_mss: structure shift not confirmed (' + mss.type + ')' };
+        const isBuy = mss.dir === 'bullish', depth = v1SweepDepth(m15, atr, isBuy);
+        if (!(depth > 0)) return { signal: 'none', note: 'sweep_mss: no liquidity sweep the same way' };
+        return { signal: isBuy ? 'buy' : 'sell', note: '🎯 sweep_mss: ' + mss.dir + ' ' + mss.type + ' after a ' + depth.toFixed(2) + '× ATR sweep' };
+    }
+    if (entry === 'asian_breakout') {
+        if (!Array.isArray(m15) || m15.length < 40) return { signal: 'none', note: 'asian_breakout: not enough candles' };
+        const tOf = c => new Date(c.time).getTime();
+        const last = m15[m15.length - 2], prev = m15[m15.length - 3];   // the last one is still forming
+        const ny = v1NyParts(tOf(last));   // the candle's start, New York time
+        if (ny.mod < 3 * 60 || ny.mod >= 6 * 60) return { signal: 'none', note: 'asian_breakout: outside 03:00-06:00 New York' };
+        const open = tOf(last) - (ny.mod - 3 * 60) * 60000, start = open - 8 * 3600000;   // 03:00 and 19:00 New York
+        const range = m15.filter(c => { const t = tOf(c); return t >= start && t < open; });
+        if (range.length < 16) return { signal: 'none', note: 'asian_breakout: Asian range incomplete (' + range.length + ' candles)' };
+        const hi = Math.max(...range.map(c => c.high)), lo = Math.min(...range.map(c => c.low));
+        const inside = c => c.close <= hi && c.close >= lo;
+        if (tOf(last) === _v1AltBar) return { signal: 'none', note: 'asian_breakout: this candle was already used' };
+        const firstOut = tOf(prev) < open || inside(prev);
+        if (last.close > hi && firstOut) { _v1AltBar = tOf(last); return { signal: 'buy', note: '🌏 asian_breakout: close ' + last.close + ' above the Asian high ' + hi }; }
+        if (last.close < lo && firstOut) { _v1AltBar = tOf(last); return { signal: 'sell', note: '🌏 asian_breakout: close ' + last.close + ' below the Asian low ' + lo }; }
+        return { signal: 'none', note: 'asian_breakout: no new close outside ' + lo + '-' + hi };
+    }
+    return { signal: analysis.signal, note: null };
 }
 
 // ─── Two-leg exits and the stop ladder ──────────────────────────────────────
@@ -7499,7 +7584,16 @@ async function _runCycleInner() {
         logger.info('[DEBUG] effMin=' + effMin);
     }
 
-    if (analysis.signal === 'none' || analysis.score < effMin) {
+    // v1 option V1_ENTRY: a simple entry rule in place of the ICT score (see
+    // v1AltSignal). Placed after the quality gate, which it replaces.
+    if (V1 && V1.entry !== 'ict') {
+        const alt = v1AltSignal(V1.entry, analysis, aTf.m15, aTf.atr || analysis.atr || atr14);
+        analysis.signal = alt.signal;
+        analysis._v1Alt = V1.entry;
+        if (alt.note) analysis.hits.push(alt.note);
+    }
+
+    if (analysis.signal === 'none' || (!analysis._v1Alt && analysis.score < effMin)) {
         if (cfg.debug) logger.info('[DEBUG] No trade: signal=' + analysis.signal + ', score=' + analysis.score + ', min=' + effMin);
         // Score too low to trade but a real direction existed — log it too,
         // separately from quality_gate rejections, so "the bar is just too
@@ -7539,7 +7633,7 @@ async function _runCycleInner() {
                            (analysis.obs && analysis.obs.length > 0) ||
                            (analysis.mss && analysis.mss.dir !== 'neutral') ||
                            (analysis.bias !== 'neutral' && analysis.bias === analysis.signal);
-    if (!hasKeyConfluence && analysis.score < 6) {
+    if (!analysis._v1Alt && !hasKeyConfluence && analysis.score < 6) {
         return { status: 'no_confluence', message: 'No key confluence and score < 6', analysis };
     }
 
@@ -7550,7 +7644,7 @@ async function _runCycleInner() {
     let hasAggro = cfg.mode === 'aggressive' && analysis.bias !== 'neutral' && analysis.signal !== 'none';
     let hasMSS = hasRealMSS || hasJudas || hasAggro;
 
-    if (!hasMSS && analysis.score < 6) {
+    if (!analysis._v1Alt && !hasMSS && analysis.score < 6) {
         return { status: 'no_mss', message: 'No MSS and score < 6', analysis };
     }
 
@@ -7573,8 +7667,9 @@ async function _runCycleInner() {
     // ─── v1 entry gate: daily stop, trading hours, news, data, spread ────
     if (V1) {
         const setupBar = aTf.tf === '1h' && aTf.m15.length ? new Date(aTf.m15[aTf.m15.length - 1].time).getTime() : 0;
+        const volRank = V1.volFloor > 0 ? await v1DailyAtrRank(cfg) : null;
         const why = v1EntryGate(V1, { now: Date.now(), m15, atr: atr14, quote: spread, positions: ourPositions, usualSpread: cfg._v1UsualSpread })
-            || v1EntryFilters(V1, analysis, aTf.m15, aTf.atr || analysis.atr)
+            || v1EntryFilters(V1, analysis, aTf.m15, aTf.atr || analysis.atr, volRank)
             || (setupBar && setupBar === _v1LastEntryBar ? 'already traded this 1-hour candle' : null);
         if (why) {
             v1NoteBlock(why, analysis);

@@ -209,6 +209,34 @@ class DataMarket {
   }
 }
 
+// Signal study (added 2026-10-30, rule S1 in RULES.md): the price move in the
+// trade's direction 15, 30, 60 and 120 minutes after entry, in R (the move ÷
+// the stop distance), before costs and ignoring the trade's stop, targets and
+// exits. drift is the same move for a buy at the same clock time on the 5
+// trading days either side, so a market that simply rose all year doesn't
+// count as skill for buys. A horizon past the end of the data is left out.
+const FWD_MIN = [15, 30, 60, 120];
+function forwardMoves(mk, ts, dir, risk) {
+  if (!(ts > 0) || !dir || !(risk > 0)) return null;
+  const last = mk.t[mk.n - 1], out = { risk: +risk.toFixed(2) };
+  const move = (a, h) => (a + h * 60000 <= last && mk.idxAt(a) >= 0) ? mk.bid(a + h * 60000) - mk.bid(a) : null;
+  for (const h of FWD_MIN) {
+    const own = move(ts, h);
+    if (own === null) continue;
+    let s = 0, k = 0;
+    for (let d = -7; d <= 7 && k < 10; d++) {
+      if (!d) continue;
+      const a = ts + d * 86400000, wd = new RealDate(a).getUTCDay();
+      if (wd === 0 || wd === 6) continue;
+      const m = move(a, h);
+      if (m !== null) { s += m; k++; }
+    }
+    out['r' + h] = +(dir * own / risk).toFixed(4);
+    if (k) out['d' + h] = +(dir * (s / k) / risk).toFixed(4);
+  }
+  return out;
+}
+
 // ── virtual clock ───────────────────────────────────────────────────────────
 const RealDate = Date;
 let VNOW = FROM;
@@ -517,7 +545,10 @@ function simulateEaExit(mk, o) {
         legPnl: typeof t.legPnl === 'number' ? t.legPnl : null, partialPnl: typeof t.partialPnl === 'number' ? t.partialPnl : null, tp1Hit: !!t.tp1Hit,
         d1: (t.macroTrend && t.macroTrend.daily && t.macroTrend.daily.direction) || null,
         // overnight swap paid (account currency, and in R) — trend trades only (2026-10-24)
-        ...(() => { const sw = (broker.deals[t.id] || []).reduce((a, d) => a + (d.swap || 0), 0); return { swap: Math.round(sw * 100) / 100, swapR: t.riskAmount > 0 ? Math.round(sw / t.riskAmount * 1000) / 1000 : null }; })() });
+        ...(() => { const sw = (broker.deals[t.id] || []).reduce((a, d) => a + (d.swap || 0), 0); return { swap: Math.round(sw * 100) / 100, swapR: t.riskAmount > 0 ? Math.round(sw / t.riskAmount * 1000) / 1000 : null }; })(),
+        // signal study (2026-10-30): how far price went the trade's way after
+        // entry, before costs and with no exits, in R
+        fwd: forwardMoves(mk, Date.parse(t.ts), t.signal === 'buy' ? 1 : t.signal === 'sell' ? -1 : 0, Math.abs((t.entryPrice || 0) - (t.sl || 0))) });
     }
     if (trim && j.trades.length > 120) {
       // keep the journal small (the bot rewrites it on every change): open
