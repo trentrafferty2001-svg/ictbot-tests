@@ -34,6 +34,17 @@ import urllib.parse
 import urllib.request
 import zipfile
 
+# Markets (added 2026-10-30): Dukascopy's name, HistData's name, the range a
+# typical price must fall in (to pick Dukascopy's price scale), and whether the
+# gold-style daily-break time-zone check applies.
+INSTRUMENTS = {
+    'xauusd': {'duka': 'XAUUSD', 'hd': 'xauusd', 'px': (600, 8000), 'tzcheck': True},
+    'nsxusd': {'duka': 'USATECHIDXUSD', 'hd': 'nsxusd', 'px': (1000, 40000), 'tzcheck': True},   # Nasdaq 100
+    'grxeur': {'duka': 'DEUIDXEUR', 'hd': 'grxeur', 'px': (4000, 40000), 'tzcheck': False},      # DAX
+    'btcusd': {'duka': 'BTCUSD', 'hd': None, 'px': (100, 400000), 'tzcheck': False},             # Bitcoin (HistData has none)
+}
+INST = INSTRUMENTS['xauusd']
+
 UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
 UTC = dt.timezone.utc
 
@@ -54,7 +65,7 @@ def fetch(url, data=None, headers=None, opener=None, timeout=60):
 # LZMA-compressed records of 24 bytes: seconds into the day, then four prices
 # as integers in thousandths of a dollar, then volume as a float.
 def dukascopy_day(day):
-    url = f'https://datafeed.dukascopy.com/datafeed/XAUUSD/{day.year}/{day.month - 1:02d}/{day.day:02d}/BID_candles_min_1.bi5'
+    url = f'https://datafeed.dukascopy.com/datafeed/{INST["duka"]}/{day.year}/{day.month - 1:02d}/{day.day:02d}/BID_candles_min_1.bi5'
     err = None
     for attempt in range(4):
         try:
@@ -78,7 +89,8 @@ def dukascopy_day(day):
 
 def from_dukascopy(start, end):
     days = [start + dt.timedelta(days=i) for i in range((end - start).days)]
-    days = [d for d in days if d.weekday() != 5]  # no gold trading on Saturdays
+    if INST['duka'] != 'BTCUSD':
+        days = [d for d in days if d.weekday() != 5]  # no trading on Saturdays (bitcoin trades every day)
     raw = {}
     with cf.ThreadPoolExecutor(max_workers=4) as pool:
         for d, recs in zip(days, pool.map(dukascopy_day, days)):
@@ -104,7 +116,8 @@ def from_dukascopy(start, end):
     # actually traded since 2010 ($1,000-$6,000) instead of assuming it.
     closes = sorted(r[1 + best[3]] for r in recs[:: max(1, len(recs) // 2000)])
     median = closes[len(closes) // 2]
-    scale = next((s for s in (1000, 100000, 100, 10000, 10) if 600 <= median / s <= 8000), None)
+    lo_px, hi_px = INST['px']
+    scale = next((s for s in (1000, 100000, 100, 10000, 10, 1) if lo_px <= median / s <= hi_px), None)
     if scale is None:
         raise RuntimeError(f'cannot tell the price scale (typical raw close {median})')
     out = []
@@ -129,7 +142,9 @@ def histdata_file(year, month=None):
 
 
 def _histdata_file(year, month=None):
-    page = 'https://www.histdata.com/download-free-forex-historical-data/?/ascii/1-minute-bar-quotes/xauusd/' + (f'{year}/{month}' if month else f'{year}')
+    if not INST['hd']:
+        raise RuntimeError('HistData has no files for this market')
+    page = 'https://www.histdata.com/download-free-forex-historical-data/?/ascii/1-minute-bar-quotes/' + INST['hd'] + '/' + (f'{year}/{month}' if month else f'{year}')
     opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
     html = fetch(page, opener=opener)[0].decode('utf-8', 'replace')
     form = {}
@@ -190,24 +205,70 @@ def from_histdata(start, end):
     return [r for r in rows if lo <= r[0] < hi]
 
 
+# ── 3. Bitstamp BTC/USD minutes, from a public GitHub dataset ─────────────
+# (github.com/ff137/bitstamp-btcusd-minute-data: 1-minute OHLCV since 2012,
+# one history file plus a file of recent updates). Columns are read from the
+# header; timestamps in seconds or milliseconds, UTC.
+BITSTAMP = ['https://raw.githubusercontent.com/ff137/bitstamp-btcusd-minute-data/main/data/historical/btcusd_bitstamp_1min_2012-2025.csv.gz',
+            'https://raw.githubusercontent.com/ff137/bitstamp-btcusd-minute-data/main/data/updates/btcusd_bitstamp_1min_latest.csv']
+
+
+def from_bitstamp(start, end):
+    lo, hi = start.timestamp() * 1000, end.timestamp() * 1000
+    rows, errs = [], []
+    for url in BITSTAMP:
+        try:
+            body, _ = fetch(url, timeout=600)
+        except Exception as e:  # noqa: BLE001
+            errs.append(f'{url.rsplit("/", 1)[-1]}: {type(e).__name__}: {e}')
+            continue
+        if url.endswith('.gz'):
+            body = gzip.decompress(body)
+        lines = body.decode('utf-8', 'replace').splitlines()
+        head = [h.strip().lower() for h in lines[0].split(',')] if lines else []
+        col = {k: next((i for i, h in enumerate(head) if h == k or h.startswith(k)), None) for k in ('timestamp', 'open', 'high', 'low', 'close', 'volume')}
+        if col['timestamp'] is None:
+            col['timestamp'] = next((i for i, h in enumerate(head) if h in ('time', 'unix', 'date')), 0)
+        if None in (col['open'], col['high'], col['low'], col['close']):
+            errs.append(f'unexpected columns {head[:8]}')
+            continue
+        for line in lines[1:]:
+            p = line.split(',')
+            try:
+                t = float(p[col['timestamp']])
+                t = t if t > 1e12 else t * 1000
+                if lo <= t < hi:
+                    rows.append((int(t), float(p[col['open']]), float(p[col['high']]), float(p[col['low']]), float(p[col['close']]),
+                                 float(p[col['volume']]) if col['volume'] is not None and p[col['volume']] else 0.0))
+            except (ValueError, IndexError):
+                continue
+    if not rows:
+        raise RuntimeError('no bars: ' + ' | '.join(errs))
+    return rows
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--from', dest='start', required=True)
     ap.add_argument('--to', dest='end', required=True)
     ap.add_argument('--name', required=True)
     ap.add_argument('--out', default=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data'))
-    ap.add_argument('--source', choices=['auto', 'dukascopy', 'histdata'], default='auto')
+    ap.add_argument('--source', choices=['auto', 'dukascopy', 'histdata', 'bitstamp'], default='auto')
+    ap.add_argument('--instrument', choices=sorted(INSTRUMENTS), default='xauusd')
     a = ap.parse_args()
+    global INST
+    INST = INSTRUMENTS[a.instrument]
     start = dt.datetime.strptime(a.start, '%Y-%m-%d').replace(tzinfo=UTC)
     end = min(dt.datetime.strptime(a.end, '%Y-%m-%d').replace(tzinfo=UTC), dt.datetime.now(UTC) - dt.timedelta(days=1))
-    out_file = os.path.join(a.out, f'xauusd-{a.name}.csv.gz')
+    out_file = os.path.join(a.out, f'{a.instrument}-{a.name}.csv.gz')
     if os.path.exists(out_file) and os.path.getsize(out_file) > 100000:
         print('cached:', out_file)
         return 0
     os.makedirs(a.out, exist_ok=True)
     need = 20000 if (end - start).days < 200 else 50000
     tried = []
-    for source, fn in (('Dukascopy', from_dukascopy), ('HistData', from_histdata)):
+    sources = (('Bitstamp', from_bitstamp), ('Dukascopy', from_dukascopy)) if a.instrument == 'btcusd' else (('Dukascopy', from_dukascopy), ('HistData', from_histdata))
+    for source, fn in sources:
         if a.source != 'auto' and a.source != source.lower():
             continue
         t0 = time.time()
@@ -237,10 +298,20 @@ def main():
                     counts[t.hour] += 1
             return (min(range(24), key=lambda h: counts[h]), sum(counts)) if sum(counts) else (None, 0)
         (win_h, win_n), (sum_h, sum_n) = emptiest({12, 1, 2}), emptiest({6, 7, 8})
-        tz_ok = (win_n == 0 or win_h == 22) and (sum_n == 0 or sum_h == 21)
+        tz_ok = not INST['tzcheck'] or ((win_n == 0 or win_h == 22) and (sum_n == 0 or sum_h == 21))
         annot('notice' if tz_ok else 'warning', 'Time-zone check',
               f'daily break found at {win_h if win_n else "-"}:00 UTC in winter (expected 22) and {sum_h if sum_n else "-"}:00 UTC in summer (expected 21)'
               + ('' if tz_ok else ': the timestamps may be shifted, so session and daily-break rules would be tested at the wrong times'))
+        # Bars per UTC hour on weekdays (Jan and Jul): shows each market's
+        # session and daily break, to check the time zone by eye.
+        for mon in (1, 7):
+            hc = [0] * 24
+            for r in rows:
+                t = dt.datetime.fromtimestamp(r[0] / 1000, UTC)
+                if t.month == mon and t.weekday() < 5:
+                    hc[t.hour] += 1
+            if sum(hc):
+                annot('notice', f'Bars per UTC hour, month {mon}', ' '.join(f'{h}:{n}' for h, n in enumerate(hc)))
         with gzip.open(out_file, 'wt') as f:
             f.write('timestamp,open,high,low,close,volume\n')
             for r in rows:

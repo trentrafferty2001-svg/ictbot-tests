@@ -49,6 +49,26 @@ const SYNTHETIC = !!arg('synthetic', false);
 const SEED = parseInt(arg('seed', '1'), 10);
 const WARMUP_DAYS = 70;
 const LABEL = String(arg('label', ''));
+// ── market (added 2026-10-30): gold, or XM's US100Cash#, GER40Cash#, BTCUSD#
+// Hours are XM server time (minutes): the broker's open/close, and the bot's
+// own day (bot-engine.js v1Hours). Spreads are estimates in price units, by
+// New York hour; check them against MT5 and use --spread-mult to stress them.
+//  nas: XM's 24-hour average for US100Cash is about 2.9 points; assumed 1.5 in
+//       the New York cash session (09:30-16:00), 2.5 in Europe's hours, 3.5
+//       in Asia's.
+//  ger: XM's 24-hour average for GER40Cash is about 3.8 points; assumed 1.8 in
+//       Xetra hours (09:00-17:30 Frankfurt), 3.5 either side, 6 overnight.
+//  btc: a comparison site puts XM's BTCUSD spread at $50-80; assumed $60
+//       (weak evidence: the I5 test raises it by half).
+const MARKET = String(arg('market', 'gold')).toLowerCase();
+const MKT = ({
+  gold: { sym: 'XAUUSD', contract: 100, synth: 2000, fx: 1, brokerOpen: 65, brokerClose: 23 * 60 + 55, botOpen: 70, botClose: 23 * 60 + 50 },
+  nas: { sym: 'US100Cash#', contract: 1, synth: 15000, fx: 1, brokerOpen: 65, brokerClose: 23 * 60 + 55, botOpen: 70, botClose: 23 * 60 + 50 },
+  ger: { sym: 'GER40Cash#', contract: 1, synth: 16000, fx: 1.1, brokerOpen: 2 * 60 + 15, brokerClose: 23 * 60, botOpen: 2 * 60 + 15, botClose: 23 * 60 },
+  btc: { sym: 'BTCUSD#', contract: 1, synth: 40000, fx: 1, brokerOpen: 65, brokerClose: 23 * 60 + 55, botOpen: 70, botClose: 23 * 60 + 50 },
+})[MARKET];
+if (!MKT) throw new Error('unknown --market ' + MARKET + ' (gold, nas, ger, btc)');
+const SYM = MKT.sym;
 const t0Real = Date.now();
 
 // ── bot environment (isolated state, frozen v1 unless --env says otherwise) ──
@@ -56,7 +76,7 @@ const STATE = fs.mkdtempSync(path.join(require('os').tmpdir(), 'ictreplay-'));
 fs.mkdirSync(STATE + '/data', { recursive: true });
 Object.assign(process.env, {
   META_TOKEN: 'replay', META_ACC_ID: 'replay', META_REGION: 'new-york', TELEGRAM_BOT_TOKEN: 'replay', TELEGRAM_CHAT_ID: '1',
-  BOT_SYMBOL: 'XAUUSD', BOT_CURRENCY: CURRENCY, BOT_RISK: '2', BOT_MODE: 'normal', LOG_LEVEL: 'error', NODE_ENV: 'production',
+  BOT_SYMBOL: SYM, BOT_CURRENCY: CURRENCY, BOT_RISK: '2', BOT_MODE: 'normal', LOG_LEVEL: 'error', NODE_ENV: 'production',
   JOURNAL_PATH: STATE + '/journal.json', ZONE_MEMORY_FILE: STATE + '/zm.json', TP_FIX_STATE_FILE: STATE + '/tpf.json', SEASONALITY_FILE: STATE + '/season.json',
   AB_TESTING_FILE: STATE + '/ab.json', ERROR_CACHE_FILE: STATE + '/err.json', COUNTERFACTUAL_FILE: STATE + '/cf.json', DATA_DIR: STATE + '/data',
   BACKTEST_DB_PATH: STATE + '/bt.db', RENDER_VOLUME_PATH: STATE, GOLD_MODEL_PATH: STATE + '/gold_model.json',
@@ -73,10 +93,10 @@ function usDst(ms) {
 }
 const srvOff = ms => (usDst(ms) ? 3 : 2) * 3600000;
 function srvParts(ms) { const t = new Date(ms + srvOff(ms)); return { wd: t.getUTCDay(), h: t.getUTCHours(), mod: t.getUTCHours() * 60 + t.getUTCMinutes() }; }
-function xmOpen(ms) { const s = srvParts(ms); if (s.wd === 6 || s.wd === 0) return false; return !(s.mod >= 23 * 60 + 55 || s.mod < 65); }
+function xmOpen(ms) { const s = srvParts(ms); if (s.wd === 6 || s.wd === 0) return false; return !(s.mod >= MKT.brokerClose || s.mod < MKT.brokerOpen); }
 // v1's own entry windows / flatten rule, for the random-entry test
-function entryAllowed(ms) { const s = srvParts(ms); if (!xmOpen(ms)) return false; if (s.mod >= 23 * 60 + 35 || s.mod < 85) return false; if (s.wd === 1 && s.mod < 130) return false; if (s.wd === 5 && s.mod >= 22 * 60 + 50) return false; return true; }
-const flattenDue = ms => { const s = srvParts(ms); return xmOpen(ms) && s.mod >= 23 * 60 + 35; };
+function entryAllowed(ms) { const s = srvParts(ms); if (!xmOpen(ms)) return false; if (s.mod >= MKT.botClose - 15 || s.mod < MKT.botOpen + 15) return false; if (s.wd === 1 && s.mod < MKT.botOpen + 60) return false; if (s.wd === 5 && s.mod >= MKT.botClose - 60) return false; return true; }
+const flattenDue = ms => { const s = srvParts(ms); return xmOpen(ms) && s.mod >= MKT.botClose - 15; };
 
 // ── spreads by server hour of the week ──────────────────────────────────────
 // Default ≈ XM Ultra Low gold: ~$0.20 in London/New York hours, wider in Asia,
@@ -92,6 +112,14 @@ if (arg('spreads', null)) {
 function spreadAt(ms) {
   const s = srvParts(ms);
   let sp = SPREAD_TABLE && SPREAD_TABLE[s.wd + '-' + s.h];
+  if (!(sp > 0) && MARKET !== 'gold') {
+    const ny = (s.mod - 420 + 1440) % 1440;   // New York minute of the day (XM server time is always New York + 7h)
+    if (MARKET === 'nas') sp = ny >= 570 && ny < 960 ? 1.5 : ny >= 180 && ny < 1020 ? 2.5 : 3.5;
+    else if (MARKET === 'ger') sp = ny >= 180 && ny < 690 ? 1.8 : ny >= 135 && ny < 960 ? 3.5 : 6;
+    else sp = 60;
+    if (s.mod >= MKT.brokerClose - 30 || s.mod < MKT.brokerOpen + 30) sp *= 2.5;
+    if (s.wd === 1 && s.mod < MKT.brokerOpen + 60) sp *= 1.5;
+  }
   if (!(sp > 0)) {
     sp = (s.h >= 9 && s.h < 20) ? 0.20 : 0.28;
     if (s.mod >= 23 * 60 + 25 || s.mod < 95) sp = 0.60;
@@ -106,7 +134,7 @@ function loadBars() {
   const lo = FROM - WARMUP_DAYS * 86400000, hi = TO + 2 * 86400000, out = [];
   if (SYNTHETIC) {
     const rnd = mulberry32(SEED), g = () => { let u = 0, v = 0; while (u === 0) u = rnd(); while (v === 0) v = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
-    let p = 2000;
+    let p = MKT.synth;
     for (let t = Math.floor(lo / 60000) * 60000; t < hi; t += 60000) {
       if (!xmOpen(t)) continue;
       const h = new Date(t).getUTCHours(), m = (h >= 7 && h < 17) ? 1.25 : (h >= 22 || h < 6) ? 0.6 : 0.9, sig = 0.00018 * p * m;
@@ -157,7 +185,7 @@ class DataMarket {
   candles(tf, limit, now) {
     const idx = this.idxAt(now);
     if (idx < 0) return [];
-    const mk = (bs, b) => ({ symbol: 'XAUUSD', timeframe: tf, time: new Date(bs).toISOString(), brokerTime: new Date(bs + srvOff(bs)).toISOString().replace('T', ' ').slice(0, 23),
+    const mk = (bs, b) => ({ symbol: SYM, timeframe: tf, time: new Date(bs).toISOString(), brokerTime: new Date(bs + srvOff(bs)).toISOString().replace('T', ' ').slice(0, 23),
       open: b.open, high: +b.high.toFixed(2), low: +b.low.toFixed(2), close: b.close, tickVolume: Math.max(1, Math.round(b.vol)), spread: Math.round(spreadAt(now) * 100), volume: 0 });
     if (tf === '1m') { const out = []; for (let i = Math.max(0, idx - limit + 1); i <= idx; i++) out.push(mk(this.t[i], { open: this.o[i], high: this.h[i], low: this.l[i], close: this.c[i], vol: this.v[i] })); return out; }
     const T = this.tf[tf]; if (!T) return [];
@@ -209,7 +237,7 @@ const realError = console.error; console.error = (...a) => { if (errOut.length <
 process.on('unhandledRejection', e => { if (errOut.length < 50) errOut.push('unhandledRejection: ' + ((e && e.stack) || e)); });
 
 // ── fake MetaAPI broker ─────────────────────────────────────────────────────
-const CONTRACT = 100;
+const CONTRACT = MKT.contract, PX_RATE = RATE * MKT.fx;   // account units per unit of the price currency
 // Overnight swap, as a share of the price per night held through XM's
 // rollover (server midnight), triple on Wednesday nights (for the weekend),
 // none on Saturday/Sunday. Defaults: 0.025% a night for buys (about $100 a
@@ -224,12 +252,12 @@ class Broker {
   constructor(mk) { this.mk = mk; this.balance = BALANCE; this.positions = []; this.closed = []; this.deals = {}; this.nextId = 1000; this.last = VNOW; this.lastDay = srvDay(VNOW); this.rejects = 0; this.requests = 0; this.serverMoves = 0; this.telegram = 0; this.orders = []; this.fills = 0; }
   bid() { return this.mk.bid(VNOW); }
   ask() { return +(this.bid() + spreadAt(VNOW)).toFixed(2); }
-  view(p) { const cur = p.type === 'POSITION_TYPE_BUY' ? this.bid() : this.ask(), pr = (p.type === 'POSITION_TYPE_BUY' ? cur - p.openPrice : p.openPrice - cur) * p.volume * CONTRACT * RATE;
-    return { id: p.id, positionId: p.id, type: p.type, symbol: 'XAUUSD', openPrice: p.openPrice, volume: p.volume, stopLoss: p.stopLoss, takeProfit: p.takeProfit, comment: p.comment, time: new Date(p.openTime).toISOString(), updateTime: new Date(p.openTime).toISOString(), currentPrice: cur, profit: +pr.toFixed(2), unrealizedProfit: +(pr + (p.swap || 0)).toFixed(2), swap: +(p.swap || 0).toFixed(2), commission: 0 }; }
+  view(p) { const cur = p.type === 'POSITION_TYPE_BUY' ? this.bid() : this.ask(), pr = (p.type === 'POSITION_TYPE_BUY' ? cur - p.openPrice : p.openPrice - cur) * p.volume * CONTRACT * PX_RATE;
+    return { id: p.id, positionId: p.id, type: p.type, symbol: SYM, openPrice: p.openPrice, volume: p.volume, stopLoss: p.stopLoss, takeProfit: p.takeProfit, comment: p.comment, time: new Date(p.openTime).toISOString(), updateTime: new Date(p.openTime).toISOString(), currentPrice: cur, profit: +pr.toFixed(2), unrealizedProfit: +(pr + (p.swap || 0)).toFixed(2), swap: +(p.swap || 0).toFixed(2), commission: 0 }; }
   account() { let u = 0; for (const p of this.positions) u += this.view(p).profit; return { platform: 'mt5', type: 'ACCOUNT_TRADE_MODE_DEMO', currency: CURRENCY, balance: +this.balance.toFixed(2), equity: +(this.balance + u).toFixed(2), margin: 0, freeMargin: +(this.balance + u).toFixed(2), leverage: 100, marginMode: 'ACCOUNT_MARGIN_MODE_RETAIL_HEDGING' }; }
   close(p, price, reason, vol) {
     vol = vol == null ? p.volume : Math.min(vol, p.volume);
-    const pnl = (p.type === 'POSITION_TYPE_BUY' ? price - p.openPrice : p.openPrice - price) * vol * CONTRACT * RATE;
+    const pnl = (p.type === 'POSITION_TYPE_BUY' ? price - p.openPrice : p.openPrice - price) * vol * CONTRACT * PX_RATE;
     const swap = p.swap ? p.swap * vol / p.volume : 0; // this part's share of the swap so far
     p.swap = (p.swap || 0) - swap;
     this.balance += pnl + swap;
@@ -242,7 +270,7 @@ class Broker {
     for (let i = i0; i <= i1; i++) {
       const t = m.t[i]; if (!xmOpen(t)) continue;
       const sd = srvDay(t);
-      if (sd > this.lastDay) { for (let d = this.lastDay; d < sd; d++) { const nn = swapNights(d); if (nn) for (const p of this.positions) p.swap = (p.swap || 0) - p.openPrice * (p.type === 'POSITION_TYPE_BUY' ? SWAP_LONG : SWAP_SHORT) * nn * p.volume * CONTRACT * RATE; } this.lastDay = sd; }
+      if (sd > this.lastDay) { for (let d = this.lastDay; d < sd; d++) { const nn = swapNights(d); if (nn) for (const p of this.positions) p.swap = (p.swap || 0) - p.openPrice * (p.type === 'POSITION_TYPE_BUY' ? SWAP_LONG : SWAP_SHORT) * nn * p.volume * CONTRACT * PX_RATE; } this.lastDay = sd; }
       const sp = spreadAt(t), o = m.o[i], h = m.h[i], l = m.l[i];
       for (const od of this.orders.slice()) {
         const buy = od.type === 'ORDER_TYPE_BUY_LIMIT';
@@ -338,12 +366,12 @@ function makeFetch(broker) {
     const p = m[1], q = new URLSearchParams((m[2] || '').slice(1));
     let mm;
     if ((mm = p.match(/^\/historical-market-data\/symbols\/([^/]+)\/timeframes\/([^/]+)\/candles$/))) return json(broker.mk.candles(mm[2], parseInt(q.get('limit') || '100', 10), VNOW));
-    if (/\/current-price$/.test(p)) { const tv = +(0.01 * CONTRACT * RATE).toFixed(6); return json({ symbol: 'XAUUSD', bid: broker.bid(), ask: broker.ask(), profitTickValue: tv, lossTickValue: tv, time: new Date(VNOW).toISOString(), brokerTime: new Date(VNOW + srvOff(VNOW)).toISOString().replace('T', ' ').slice(0, 23) }); }
-    if (/\/specification$/.test(p)) return json({ symbol: 'XAUUSD', tickSize: 0.01, contractSize: CONTRACT, minVolume: 0.01, maxVolume: 100, volumeStep: 0.01, stopsLevel: 0, freezeLevel: 0, digits: 2 });
-    if (p === '/symbols') return json(['XAUUSD']);
+    if (/\/current-price$/.test(p)) { const tv = +(0.01 * CONTRACT * PX_RATE).toFixed(6); return json({ symbol: SYM, bid: broker.bid(), ask: broker.ask(), profitTickValue: tv, lossTickValue: tv, time: new Date(VNOW).toISOString(), brokerTime: new Date(VNOW + srvOff(VNOW)).toISOString().replace('T', ' ').slice(0, 23) }); }
+    if (/\/specification$/.test(p)) return json({ symbol: SYM, tickSize: 0.01, contractSize: CONTRACT, minVolume: 0.01, maxVolume: 100, volumeStep: 0.01, stopsLevel: 0, freezeLevel: 0, digits: 2 });
+    if (p === '/symbols') return json([SYM]);
     if (p === '/account-information') return json(broker.account());
     if (p === '/positions') return json(broker.positions.map(x => broker.view(x)));
-    if (p === '/orders') return json(broker.orders.map(od => ({ id: od.id, type: od.type, state: 'ORDER_STATE_PLACED', symbol: 'XAUUSD', openPrice: od.openPrice, volume: od.volume, currentVolume: od.volume, stopLoss: od.stopLoss, takeProfit: od.takeProfit, comment: od.comment, time: new Date(od.time).toISOString() })));
+    if (p === '/orders') return json(broker.orders.map(od => ({ id: od.id, type: od.type, state: 'ORDER_STATE_PLACED', symbol: SYM, openPrice: od.openPrice, volume: od.volume, currentVolume: od.volume, stopLoss: od.stopLoss, takeProfit: od.takeProfit, comment: od.comment, time: new Date(od.time).toISOString() })));
     if ((mm = p.match(/^\/history-deals\/position\/(.+)$/))) return json(broker.deals[decodeURIComponent(mm[1])] || []);
     if (p.startsWith('/history-')) return json([]);
     if (p === '/trade' && opts.method === 'POST') return json(broker.trade(JSON.parse(opts.body || '{}')));
@@ -467,7 +495,7 @@ function simulateEaExit(mk, o) {
   if (EA_MODE) eaSetup(mk);
   const broker = new Broker(mk);
   global.fetch = makeFetch(broker);
-  global._botState = { botConfig: { symbol: 'XAUUSD', mode: 'normal', risk: 2, currency: CURRENCY, region: 'new-york' } };
+  global._botState = { botConfig: { symbol: SYM, mode: 'normal', risk: 2, currency: CURRENCY, region: 'new-york' } };
   const be = require(path.join(PROJ, 'bot-engine.js'));
   const JP = process.env.JOURNAL_PATH, captured = {}, trades = [], statuses = {}, blocks = {};
   const capture = (trim) => {
@@ -583,7 +611,7 @@ function simulateEaExit(mk, o) {
   }
   const out = {
     label: LABEL, from: new Date(FROM).toISOString(), to: new Date(END).toISOString(), synthetic: SYNTHETIC, seed: SEED,
-    settings: { cycleMin: CYCLE_MIN, spreadMult: SPREAD_MULT, slippage: SLIPPAGE, balance: BALANCE, currency: CURRENCY, rate: RATE, spreadTable: !!SPREAD_TABLE, env: VARIANT_ENV },
+    settings: { market: MARKET, symbol: SYM, cycleMin: CYCLE_MIN, spreadMult: SPREAD_MULT, slippage: SLIPPAGE, balance: BALANCE, currency: CURRENCY, rate: RATE, spreadTable: !!SPREAD_TABLE, env: VARIANT_ENV },
     bars: mk.n, cycles, statuses, blocks, errors: errOut.slice(0, 20), brokerRejects: broker.rejects, limitFills: broker.fills, serverStopMoves: broker.serverMoves,
     n: v1.length, meanR: mean(rs), sdR: sd(rs), sumR: rs.reduce((a, b) => a + b, 0),
     model: { n: model.length, sumR: model.reduce((a, b) => a + b, 0), corrWithActual: corr, meanAbsDiff: model.length ? mean(model.map((m, i) => Math.abs(m - actual[i]))) : null },

@@ -1659,7 +1659,7 @@ function getCfg() { let s = global._botState || {}, sv = s.botConfig || {}; retu
 }; }
 
 // ─── SYMBOL CONFIG ─────────────────────────────────────────────────────────
-function getSymConfig(sym) { sym = sym || 'XAUUSD'; let isGold = sym === 'GOLD' || sym === 'GOLD#' || sym.indexOf('XAUUSD') === 0 || sym === 'XAUUSDpro', isBTC = sym === 'BTCUSD#' || sym === 'BTCUSD' || sym === 'BTCUSDT' || sym === 'ETHUSD', isNAS = sym === 'NAS100#' || sym === 'NAS100' || sym === 'US100' || sym === 'USTEC' || sym === 'NDX100'; if (isGold) return { type: 'gold', spreadLimit: 2.5, lotVal: 10, maxLot: 10, slBufs: { aggressive: 5, sniper: 35, normal: 10 }, atrThreshHigh: 8, atrThreshLow: 3, dxyRelevant: true, minSL: 0.5, limitSlip: 1.5, eqTol: .8, maxHoldH: ADVANCED_RISK_CONFIG.maxHoldHours || 36, voidMinSize: 1.5 }; if (isBTC) return { type: 'btc', spreadLimit: 15, lotVal: 1, maxLot: 1, slBufs: { aggressive: 150, sniper: 500, normal: 250 }, atrThreshHigh: 800, atrThreshLow: 200, dxyRelevant: false, minSL: 100, limitSlip: 5, eqTol: 50, maxHoldH: ADVANCED_RISK_CONFIG.maxHoldHours || 72, voidMinSize: 200 }; if (isNAS) return { type: 'nas', spreadLimit: 10, lotVal: 10, maxLot: 5, slBufs: { aggressive: 50, sniper: 200, normal: 100 }, atrThreshHigh: 120, atrThreshLow: 40, dxyRelevant: false, minSL: 20, limitSlip: 1.5, eqTol: 5, maxHoldH: ADVANCED_RISK_CONFIG.maxHoldHours || 48, voidMinSize: 20 }; return { type: 'forex', spreadLimit: .0015, lotVal: 10, maxLot: 10, slBufs: { aggressive: .0005, sniper: .002, normal: .001 }, atrThreshHigh: .005, atrThreshLow: .001, dxyRelevant: true, minSL: .003, limitSlip: .0002, eqTol: .0003, maxHoldH: ADVANCED_RISK_CONFIG.maxHoldHours || 48, voidMinSize: .001 }; }
+function getSymConfig(sym) { sym = sym || 'XAUUSD'; let isGold = sym === 'GOLD' || sym === 'GOLD#' || sym.indexOf('XAUUSD') === 0 || sym === 'XAUUSDpro', isBTC = /^(BTCUSD|BTCUSDT|ETHUSD)/i.test(sym), isNAS = /^(NAS100|US100|USTEC|NDX100)/i.test(sym), isGER = /^(GER40|GER30|DE40|DE30|DAX)/i.test(sym); /* XM: US100Cash, GER40Cash, BTCUSD (2026-10-30) */ if (isGold) return { type: 'gold', spreadLimit: 2.5, lotVal: 10, maxLot: 10, slBufs: { aggressive: 5, sniper: 35, normal: 10 }, atrThreshHigh: 8, atrThreshLow: 3, dxyRelevant: true, minSL: 0.5, limitSlip: 1.5, eqTol: .8, maxHoldH: ADVANCED_RISK_CONFIG.maxHoldHours || 36, voidMinSize: 1.5 }; if (isBTC) return { type: 'btc', spreadLimit: 15, lotVal: 1, maxLot: 1, slBufs: { aggressive: 150, sniper: 500, normal: 250 }, atrThreshHigh: 800, atrThreshLow: 200, dxyRelevant: false, minSL: 100, limitSlip: 5, eqTol: 50, maxHoldH: ADVANCED_RISK_CONFIG.maxHoldHours || 72, voidMinSize: 200 }; if (isGER) return { type: 'ger', spreadLimit: 10, lotVal: 1, maxLot: 5, slBufs: { aggressive: 40, sniper: 160, normal: 80 }, atrThreshHigh: 100, atrThreshLow: 30, dxyRelevant: false, minSL: 5, limitSlip: 1.5, eqTol: 5, maxHoldH: ADVANCED_RISK_CONFIG.maxHoldHours || 48, voidMinSize: 15 }; if (isNAS) return { type: 'nas', spreadLimit: 10, lotVal: 10, maxLot: 5, slBufs: { aggressive: 50, sniper: 200, normal: 100 }, atrThreshHigh: 120, atrThreshLow: 40, dxyRelevant: false, minSL: 5, limitSlip: 1.5, eqTol: 5, maxHoldH: ADVANCED_RISK_CONFIG.maxHoldHours || 48, voidMinSize: 20 }; return { type: 'forex', spreadLimit: .0015, lotVal: 10, maxLot: 10, slBufs: { aggressive: .0005, sniper: .002, normal: .001 }, atrThreshHigh: .005, atrThreshLow: .001, dxyRelevant: true, minSL: .003, limitSlip: .0002, eqTol: .0003, maxHoldH: ADVANCED_RISK_CONFIG.maxHoldHours || 48, voidMinSize: .001 }; }
 
 function getModeParams(cfg) { let sc = getSymConfig(cfg.symbol); switch (cfg.mode) {
     case 'aggressive': return { slBuf: sc.slBufs.aggressive, rr: 1.5, minScore: 2, riskMult: .5, kzRequired: false, useLimit: false, confirmCandle: false, useM5: false };
@@ -1968,13 +1968,17 @@ async function checkMetaApiAccount(cfg, force, cause) {
                         // XM's weekend-priced GOLD24-7 is a different market (weekend
                         // quotes, wide spreads) — never pick it. 2026-10-24.
                         const names = syms.map(s => typeof s === 'string' ? s : (s && (s.symbol || s.name))).filter(Boolean).filter(n => !/24[-_ ]?7|weekend/i.test(n));
-                        const want = String(cfg.symbol || '').toUpperCase();
-                        const gold = names.find(n => n.toUpperCase() === want) || names.find(n => /^XAUUSD/i.test(n)) || names.find(n => /^GOLD/i.test(n));
+                        const want = String(cfg.symbol || '').toUpperCase(), mt = getSymConfig(cfg.symbol).type;
+                        // Same market only (2026-10-30): a configured US100Cash must never
+                        // fall back to gold. Cash indices before dated futures (US100-DEC26).
+                        const pats = { gold: [/^XAUUSD/i, /^GOLD/i], nas: [/^US100Cash/i, /^(NAS100|US100|USTEC)(?!-)/i], ger: [/^GER40Cash/i, /^(GER40|GER30|DE40|DE30)(?!-)/i], btc: [/^BTCUSD(?!-)/i] }[mt] || [];
+                        let gold = names.find(n => n.toUpperCase() === want);
+                        for (const re of pats) if (!gold) gold = names.find(n => re.test(n));
                         if (gold) {
                             _discoveredGoldSymbol = gold; res.goldSymbol = gold;
                             if (gold !== cfg.symbol) res.fix = 'Your broker calls gold "' + gold + '", not "' + cfg.symbol + '". The bot now tries it automatically; to make it permanent set `BOT_SYMBOL=' + gold + '` in Render.';
                         } else {
-                            res.fix = 'No gold symbol (XAUUSD/GOLD...) is listed on this MT5 account — check that gold is tradable on this account type.';
+                            res.fix = 'No ' + ({ gold: 'gold symbol (XAUUSD/GOLD...)', nas: 'Nasdaq symbol (US100Cash/NAS100...)', ger: 'DAX symbol (GER40Cash/GER40...)', btc: 'Bitcoin symbol (BTCUSD...)' }[mt] || '"' + cfg.symbol + '" symbol') + ' is listed on this MT5 account — check that it is tradable on this account type.';
                         }
                     }
                 } catch (e) { res.fix = 'Could not read the symbol list: ' + compactMetaApiError(e.message); }
@@ -5355,7 +5359,7 @@ function v1Settings() {
         openRiskCap: _v1Num(sv.openRiskCap, 'OPEN_RISK_CAP', 1.5),
         dailyStopR: _v1Num(sv.dailyStopR, 'DAILY_STOP_R', 3),
         costMaxFrac: _v1Num(sv.costMaxFrac, 'COST_MAX_FRAC', 0.10),
-        slippage: _v1Num(sv.costSlippage, 'COST_SLIPPAGE', 0.10),
+        slippage: _v1Num(sv.costSlippage, 'COST_SLIPPAGE', ({ nas: 0.5, ger: 0.5, btc: 10 })[v1MarketType()] || 0.10),  // price units: $0.10 gold, 0.5 index points, $10 BTC
         commissionPerLot: _v1Num(sv.commissionPerLot, 'COMMISSION_PER_LOT', 0),
         beTrigger: String(sv.beTrigger || process.env.BE_TRIGGER || 'tp1').trim().toLowerCase() === '0.5r' ? '0.5r' : 'tp1',
         trailAtr: _v1Num(sv.trailAtr, 'TRAIL_ATR_MULT', 1.0),
@@ -5437,8 +5441,16 @@ function v1SastTime(ms) { return new Date(ms + 2 * 3600000).toISOString().slice(
 // Monday 01:10. Replaces the fixed Friday 21:00 / Sunday 22:00 UTC rule,
 // which was only right while New York was on summer time.
 const V1_BREAK_START = 23 * 60 + 50, V1_BREAK_END = 70;
+// Markets other than gold (2026-10-30). XM's cash indices and BTCUSD are
+// treated with gold's hours (01:10-23:50 server time, Monday to Friday),
+// except GER40Cash, which follows the DAX futures day: 02:15-23:00 server.
+// BTCUSD trades on weekends at some brokers; the bot doesn't (a choice:
+// ICT's sessions are weekday ones, and it keeps one schedule).
+function v1MarketType(sym) { try { return getSymConfig(sym || ((global._botState || {}).botConfig || {}).symbol || process.env.BOT_SYMBOL || 'XAUUSD').type; } catch (e) { return 'gold'; } }
+function v1Hours(sym) { return v1MarketType(sym) === 'ger' ? { open: 2 * 60 + 15, close: 23 * 60 } : { open: V1_BREAK_END, close: V1_BREAK_START }; }
 function v1MarketState(ms) {
-    const s = v1ServerParts(ms);
+    const s = v1ServerParts(ms), hrs = v1Hours();
+    const V1_BREAK_START = hrs.close, V1_BREAK_END = hrs.open;   // this market's day
     if (s.wd === 6 || s.wd === 0) return { open: false, reason: 'weekend', s };
     if (s.wd === 1 && s.mod < V1_BREAK_END) return { open: false, reason: 'weekend', s };
     if (s.wd === 5 && s.mod >= V1_BREAK_START) return { open: false, reason: 'weekend', s };
@@ -5449,7 +5461,7 @@ function v1MarketState(ms) {
 // out around the daily break and the weekly open, and a trade opened in the
 // last hour before the weekend has no time to work before it is closed.
 function v1EntryTimeBlock(ms) {
-    const st = v1MarketState(ms);
+    const st = v1MarketState(ms), hrs = v1Hours(), V1_BREAK_START = hrs.close, V1_BREAK_END = hrs.open;
     if (!st.open) return st.reason === 'weekend' ? 'market closed for the weekend' : 'XM daily break';
     const s = st.s;
     if (s.mod >= V1_BREAK_START - 15 || s.mod < V1_BREAK_END + 15) return 'within 15 min of XM\'s daily break';
@@ -5460,7 +5472,7 @@ function v1EntryTimeBlock(ms) {
 // Close everything shortly before the daily break: avoids the break's spread
 // spike, the overnight swap (0.08–0.27R a night at M15 stops) and, on
 // Fridays, the weekend gap.
-function v1FlattenDue(ms) { const st = v1MarketState(ms); return st.open && st.s.mod >= V1_BREAK_START - 15; }
+function v1FlattenDue(ms) { const st = v1MarketState(ms); return st.open && st.s.mod >= v1Hours().close - 15; }
 
 // ─── News: a pure risk rule ─────────────────────────────────────────────────
 // No new entries from 10 min before to 20 min after high-impact US releases
@@ -8142,6 +8154,9 @@ module.exports = {
     v1StartupReport,
     v1DailySummary,
     v1MarketState,
+    v1MarketType,
+    v1Hours,
+    getSymConfig,
     v1EntryTimeBlock,
     v1FlattenDue,
     v1NewsState,

@@ -138,7 +138,8 @@ const verdict = period === 'smoke' ? (replayErrors || !n ? 'SMOKE TEST: PROBLEM 
 
 // ── report ─────────────────────────────────────────────────────────────────
 const L = [];
-L.push('# Replay verdict — ' + label + ' (' + period + ')' + (eaId ? ' · EA strategy ' + eaId : ''), '');
+const mkt = ((runs[0].settings || {}).symbol) || 'XAUUSD';
+L.push('# Replay verdict — ' + label + ' (' + period + ')' + (eaId ? ' · EA strategy ' + eaId : '') + ' · ' + mkt, '');
 L.push('**' + verdict + '** · ' + runs[0].from.slice(0, 10) + ' → ' + runs[runs.length - 1].to.slice(0, 10) + (runs[0].synthetic ? ' · synthetic control data' : ' · real XAUUSD M1 prices'), '');
 L.push('| | |', '|---|---|');
 L.push('| Trades | ' + n + ' (' + (n / Math.max(1, Object.keys(years).length)).toFixed(0) + ' a year) |');
