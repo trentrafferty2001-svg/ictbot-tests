@@ -38,3 +38,4 @@ Every replay run, in order. The number of rows is the number of tries — the mo
 | 2026-10-30 | development | ote-btc | `{"V1_STRATEGY":"ote","V1_MAX_LOTS":"0.02"}` | 102 | -0.199 | -2.03 | — | TOO FEW TRADES |
 | 2026-10-30 | decade | turtle-55d-ger | `{"V1_STRATEGY":"ea","V1_EA":"turtle-55d","V1_MAX_LOTS":"0.02"}` | 48 | +1.888 | 0.76 | 53.0% | TOO FEW TRADES |
 | 2026-10-30 | decade | turtle-55d-btc | `{"V1_STRATEGY":"ea","V1_EA":"turtle-55d","V1_MAX_LOTS":"0.02"}` | 32 | +1.227 | 1.14 | 37.6% | TOO FEW TRADES |
+| 2026-10-30 | decade | turtle-55d-gold | `{"V1_STRATEGY":"ea","V1_EA":"turtle-55d","V1_MAX_LOTS":"0.02"}` | 44 | -0.122 | -0.56 | 30.9% | TOO FEW TRADES |
