@@ -32,3 +32,4 @@ Every replay run, in order. The number of rows is the number of tries — the mo
 | 2026-10-30 | development | ict2022-15m-ger | `{"V1_STRATEGY":"ict2022","V1_ICT_TF":"15m","V1_MAX_LOTS":"0.02"}` | 210 | +0.066 | 1.02 | 96.2% | TOO FEW TRADES |
 | 2026-10-30 | development | ote-ger | `{"V1_STRATEGY":"ote","V1_MAX_LOTS":"0.02"}` | 534 | -0.047 | -0.91 | 79.9% | FAIL |
 | 2026-10-30 | development | silverbullet-ger | `{"V1_STRATEGY":"silverbullet","V1_MAX_LOTS":"0.02"}` | 508 | -0.066 | -1.35 | — | FAIL |
+| 2026-10-30 | development | ict2022-15m-btc | `{"V1_STRATEGY":"ict2022","V1_ICT_TF":"15m","V1_MAX_LOTS":"0.02"}` | 21 | +0.128 | 0.56 | — | TOO FEW TRADES |
