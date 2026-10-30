@@ -186,6 +186,25 @@ jobs:
           done
           exit 1
 
+      # verdict.md is untracked, so the hard reset below keeps it. Runs after
+      # the variant-log step, which needs the uncommitted VARIANTS.md change.
+      - name: Save the verdict to verdicts/ (readable without downloading logs)
+        if: always()
+        run: |
+          [ -s verdict.md ] || exit 0
+          git config user.name "replay-bot"
+          git config user.email "replay-bot@users.noreply.github.com"
+          F="verdicts/${{ inputs.label }}-${{ inputs.period }}-${{ github.run_id }}.md"
+          for i in 1 2 3 4 5; do
+            if git fetch -q origin "$GITHUB_REF_NAME" && git reset -q --hard FETCH_HEAD; then
+              mkdir -p verdicts && cp verdict.md "$F" && git add "$F"
+              git commit -q -m "Verdict: ${{ inputs.label }} (${{ inputs.period }}) [skip ci]" || exit 0
+              git push -q origin HEAD:"$GITHUB_REF_NAME" && exit 0
+            fi
+            sleep $((i * 5))
+          done
+          exit 1
+
   # Period "data": the price files every replay uses (HistData, the source of
   # every run so far), saved to the replay-data branch so replays can also
   # run on a computer without GitHub minutes. One job, about 10 minutes.
