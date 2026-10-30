@@ -212,3 +212,21 @@ What differs from the ICT 2022 model: **no raid or structure shift is required**
 **What stays from v1, for both.** Sizing, the cost check (spread + slippage at most 10% of the stop), the entry gate (news, daily stop, trading hours, data checks) and the exits (8-hour limit, flat before XM's daily break). Live lot cap `V1_MAX_LOTS=0.02`. Cycle 3 minutes. Nothing is tuned after a run.
 
 **Development (2015–2024): all five must hold, for each.** The same rules as the 2022 model (I1–I5): at least 300 trades; mean R > 0 after costs with t ≥ 3; beats ≥ 95% of random entries with the same exits; positive in at least two-thirds of the years that have **15+** trades *(15 rather than 30, because the OTE takes fewer trades a year)*; still positive with costs raised by 50%. **Control (random prices)** must show no edge. **Final (2025–Oct 2026)** runs once, only after development passes: at least 80 trades, mean > 0 with t ≥ 2, beats 95% of random entries.
+
+## Nasdaq, DAX and bitcoin: rules written 30 Oct 2026, before any run on them
+
+**Markets.** XM's `US100Cash#` (Nasdaq 100), `GER40Cash#` (DAX 40, formerly GER30) and `BTCUSD#`, the names on this account's MT5. Prices: HistData's 1-minute NSXUSD and GRXEUR files, and Bitstamp's 1-minute BTC/USD (a public dataset on GitHub). Replay option `--market nas|ger|btc`.
+
+**What runs.** The four ICT setups already written above, **unchanged**: ICT 2022 on 5-minute and on 15-minute candles, Silver Bullet and OTE. Each runs once on each market: 12 runs. Same New York clock, same rules, same targets, same lot cap (`V1_MAX_LOTS=0.02`), cycle 3 minutes. Nothing is tuned for a market, and nothing is changed after a run.
+
+**Costs and hours (estimates, written before any run):**
+- Nasdaq: spread 1.5 points in the New York cash session (09:30–16:00), 2.5 in Europe's hours, 3.5 overnight (XM's 24-hour average is about 2.9). Gold's hours, 01:10–23:50 server time.
+- DAX: 1.8 points in Xetra hours (09:00–17:30 Frankfurt), 3.5 either side, 6 overnight (XM's 24-hour average is about 3.8). Hours 02:15–23:00 server time (the DAX futures day) *(choice: XM's exact GER40Cash hours aren't published where this could read them)*.
+- Bitcoin: $60 *(weak evidence: one comparison site gives XM $50–80)*. Weekdays only, gold's hours *(choice: ICT's sessions are weekday ones)*.
+- Spreads widen ×2.5 within 30 minutes of the daily close and open, ×1.5 more in the first hour of the week.
+- The cost check's slippage allowance is in the market's own units: 0.5 index points, $10 for bitcoin (gold: $0.10).
+- These are estimates. I5 (costs raised by half) is the safeguard; check live spreads in MT5 before trading any market.
+
+**Pass rules.** The same as each setup's on gold: I1–I5, with I4 over years with 30+ trades for the 2022 model and 15+ for Silver Bullet and OTE. A pass counts only for the market it happened on. **Control:** one random-price run per market (ICT 2022, 5-minute), because the market code in the replay is new. **Final (2025–Oct 2026):** once, only for a setup and market that passed development.
+
+**Counting the tries.** These are 12 more rows in the variant log. With t ≥ 3 required, the chance that any one of them passes by luck alone is about 1 in 700, and about 1 in 60 that at least one of the 12 does. A single pass is still a reason for its final test, not for live money.
