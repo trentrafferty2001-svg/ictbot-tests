@@ -181,3 +181,20 @@ jobs:
             sleep $((i * 5))
           done
           exit 1
+      # Added 2026-10-30: keep the full verdict (incl. the signal study) in the
+      # repo, because run logs and artifacts can't be read from every client.
+      - name: Save the full verdict to tools/replay/verdicts/
+        if: always()
+        run: |
+          [ -s verdict.md ] || exit 0
+          F="tools/replay/verdicts/${{ inputs.label }}-${{ inputs.period }}-${{ github.run_id }}.md"
+          cp verdict.md /tmp/verdict.md
+          git config user.name "replay-bot"
+          git config user.email "replay-bot@users.noreply.github.com"
+          for i in 1 2 3 4 5; do
+            git fetch -q origin "$GITHUB_REF_NAME" && git checkout -q -- . && git reset -q --hard FETCH_HEAD
+            mkdir -p tools/replay/verdicts && cp /tmp/verdict.md "$F" && git add "$F"
+            git commit -q -m "Verdict: ${{ inputs.label }} (${{ inputs.period }}) [skip ci] [skip render]" || exit 0
+            git push -q origin HEAD:"$GITHUB_REF_NAME" && exit 0
+            sleep $((i * 5))
+          done
