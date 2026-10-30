@@ -20,3 +20,4 @@ Every replay run, in order. The number of rows is the number of tries — the mo
 | 2026-10-30 | control | ote-control | `{"V1_STRATEGY":"ote","V1_MAX_LOTS":"0.02"}` | 298 | -0.055 | -0.74 | 38.9% | PASS |
 | 2026-10-30 | control | silverbullet-control | `{"V1_STRATEGY":"silverbullet","V1_MAX_LOTS":"0.02"}` | 55 | +0.144 | 1.01 | 94.7% | PASS |
 | 2026-10-30 | development | silverbullet-development | `{"V1_STRATEGY":"silverbullet","V1_MAX_LOTS":"0.02"}` | 348 | -0.101 | -1.78 | 24.2% | FAIL |
+| 2026-10-30 | development | ote-development | `{"V1_STRATEGY":"ote","V1_MAX_LOTS":"0.02"}` | 814 | +0.001 | 0.02 | 91.3% | FAIL |
