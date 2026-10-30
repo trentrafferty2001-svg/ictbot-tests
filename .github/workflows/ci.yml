@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check server.js syntax
+        run: node --check server.js
+
+      - name: Check bot-engine.js syntax
+        run: node --check bot-engine.js
+
+      # Requires bot-engine.js and confirms every export actually resolves.
+      # This is the check that would have caught the src/ require-path bug
+      # and the dangling-export bug automatically, before either reached prod.
+      - name: Verify bot-engine.js loads cleanly
+        run: |
+          node -e "
+          const be = require('./bot-engine.js');
+          if (typeof be.runCycle !== 'function') {
+            console.error('runCycle is not a function after require — load-time failure');
+            process.exit(1);
+          }
+          const undefinedExports = Object.entries(be).filter(([k, v]) => v === undefined).map(([k]) => k);
+          if (undefinedExports.length) {
+            console.error('These exports are undefined:', undefinedExports.join(', '));
+            process.exit(1);
+          }
+          console.log('bot-engine.js loads cleanly —', Object.keys(be).length, 'exports, all defined.');
+          "
+
+      - name: Run test suite
+        run: npm test -- --ci
+
+      - name: Security audit (non-blocking)
+        run: npm audit || true

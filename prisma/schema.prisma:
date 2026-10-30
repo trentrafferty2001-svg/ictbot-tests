@@ -1,0 +1,185 @@
+# Create the prisma directory
+mkdir -p prisma
+
+# Create the schema file
+cat > prisma/schema.prisma << 'EOF'
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model BotState {
+  id                String   @id @default(cuid())
+  botOff            Boolean  @default(false)
+  paused            Boolean  @default(false)
+  newsBlock         Boolean  @default(false)
+  activeMode        String   @default("normal")
+  manualMode        Boolean  @default(false)
+  lastRun           DateTime @default(now())
+  lastSync          DateTime @updatedAt
+  status            String   @default("idle")
+  bal               Float    @default(0)
+  eq                Float    @default(0)
+  wins              Int      @default(0)
+  losses            Int      @default(0)
+  consecLosses      Int      @default(0)
+  consecWins        Int      @default(0)
+  dailyPnl          Float    @default(0)
+  monthlyPnl        Float    @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  trades            Trade[]
+  signals           Signal[]
+  performanceLogs   PerformanceLog[]
+  zoneMemory        ZoneMemory[]
+  
+  botConfig         Json?
+  analysis          Json?
+  lastSignal        Json?
+  metaData          Json?
+}
+
+model Trade {
+  id                String   @id @default(cuid())
+  positionId        String   @unique
+  symbol            String
+  direction         String
+  entryPrice        Float
+  stopLoss          Float
+  takeProfit        Float
+  volume            Float
+  score             Int
+  mode              String
+  session           String?
+  setupType         String?
+  mssType           String?
+  exitPrice         Float?
+  profit            Float?
+  pnl               Float?
+  outcome           String?
+  closedAt          DateTime?
+  createdAt         DateTime @default(now())
+  
+  fvgCount          Int
+  obCount           Int
+  liqSwept          Boolean  @default(false)
+  ote               Boolean  @default(false)
+  tripleZone        Boolean  @default(false)
+  mtfAlign          Boolean  @default(false)
+  abVersion         String?
+  
+  botStateId        String
+  botState          BotState @relation(fields: [botStateId], references: [id])
+  
+  @@index([positionId])
+  @@index([symbol])
+  @@index([createdAt])
+}
+
+model Signal {
+  id                String   @id @default(cuid())
+  timestamp         DateTime @default(now())
+  symbol            String
+  score             Int
+  direction         String?
+  status            String
+  reason            String?
+  
+  bias              String?
+  mssDir            String?
+  mssType           String?
+  fvgCount          Int
+  obCount           Int
+  liqSwept          Boolean
+  kzActive          Boolean
+  sbActive          Boolean
+  ote               Boolean
+  pdZone            String?
+  tripleZone        Boolean
+  mtfAlign          Boolean
+  adxValue          Float?
+  atrValue          Float?
+  
+  rejectionType     String?
+  rejectionDetails  Json?
+  
+  botStateId        String
+  botState          BotState @relation(fields: [botStateId], references: [id])
+  
+  @@index([symbol])
+  @@index([timestamp])
+  @@index([status])
+}
+
+model PerformanceLog {
+  id                String   @id @default(cuid())
+  timestamp         DateTime @default(now())
+  period            String
+  wins              Int
+  losses            Int
+  totalTrades       Int
+  totalPnl          Float
+  winRate           Float
+  profitFactor      Float
+  avgWin            Float
+  avgLoss           Float
+  bestTrade         Float
+  worstTrade        Float
+  maxDrawdown       Float
+  expectancy        Float
+  
+  botStateId        String
+  botState          BotState @relation(fields: [botStateId], references: [id])
+  
+  @@index([timestamp])
+  @@index([period])
+}
+
+model ZoneMemory {
+  id                String   @id @default(cuid())
+  type              String
+  key               String
+  price             Float
+  quality           Int
+  visits            Int      @default(0)
+  lastVisit         DateTime @default(now())
+  createdAt         DateTime @default(now())
+  
+  botStateId        String
+  botState          BotState @relation(fields: [botStateId], references: [id])
+  
+  @@unique([type, key])
+  @@index([type])
+  @@index([lastVisit])
+}
+
+model ABTest {
+  id                String   @id @default(cuid())
+  version           String
+  active            Boolean  @default(false)
+  trades            Int      @default(0)
+  wins              Int      @default(0)
+  totalPnl          Float    @default(0)
+  totalLoss         Float    @default(0)
+  startDate         DateTime @default(now())
+  endDate           DateTime?
+  
+  @@index([version])
+}
+
+model Subscription {
+  id                String   @id @default(cuid())
+  chatId            String   @unique
+  name              String?
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@index([chatId])
+}
+EOF

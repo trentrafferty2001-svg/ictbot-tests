@@ -1,0 +1,30 @@
+{
+  "version": 2,
+  "buildCommand": "",
+  "outputDirectory": ".",
+  "framework": null,
+  "functions": {
+    "api/metaapi.js": { "maxDuration": 30 },
+    "api/market-proxy.js": { "maxDuration": 15 }
+  },
+  "rewrites": [
+    { "source": "/api/metaapi", "destination": "/api/metaapi.js" },
+    { "source": "/api/market", "destination": "/api/market-proxy.js" },
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ],
+  "headers": [
+    {
+      "source": "/sw.js",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+        { "key": "Service-Worker-Allowed", "value": "/" }
+      ]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" }
+      ]
+    }
+  ]
+}

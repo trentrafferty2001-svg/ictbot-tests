@@ -1,0 +1,18 @@
+{
+  "name": "ICT Gold Bot Pro",
+  "short_name": "GoldBot",
+  "description": "Professional ICT strategy gold trading bot with AI analyst",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#080808",
+  "theme_color": "#f0b90b",
+  "orientation": "portrait-primary",
+  "icons": [
+    {"src":"/icon.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
+  ],
+  "categories": ["finance", "utilities"],
+  "shortcuts": [
+    {"name":"Dashboard","url":"/","icons":[{"src":"/icon.png","sizes":"512x512"}]},
+    {"name":"Start Bot","url":"/?autostart=true","icons":[{"src":"/icon.png","sizes":"512x512"}]}
+  ]
+}

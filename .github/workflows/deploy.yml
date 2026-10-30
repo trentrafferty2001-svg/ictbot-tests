@@ -1,0 +1,53 @@
+name: Deploy
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    # Secrets can't be read in an `if:`; GitHub rejected this file on every
+    # push (0 jobs, a red run on every branch) until 2026-10-30. They are
+    # passed in as environment variables and the steps test those instead.
+    env:
+      RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify server.js syntax
+        run: node --check server.js
+
+      - name: Verify bot-engine.js syntax
+        run: node --check bot-engine.js
+
+      # Gate: if this step fails, GitHub Actions stops the job here —
+      # none of the Deploy steps below will run. This is what makes
+      # deployment actually depend on tests passing, not just on a push.
+      - name: Run test suite (deploy blocked if this fails)
+        run: npm test -- --ci --passWithNoTests
+
+      - name: Deploy to Render
+        if: env.RENDER_DEPLOY_HOOK != ''
+        run: curl -fsS -X POST "$RENDER_DEPLOY_HOOK"
+
+      - name: Deploy to Railway
+        if: env.RAILWAY_TOKEN != ''
+        run: |
+          npm install -g @railway/cli
+          railway up
+
+      - name: Done
+        run: echo "✅ Tests passed, deployment workflow completed"

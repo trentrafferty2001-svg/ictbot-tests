@@ -1,0 +1,183 @@
+# Replays the real bot-engine.js over years of real gold prices and judges
+# the result against the pass rules in tools/replay/RULES.md.
+# Start it from GitHub: Actions → "Replay on real gold data" → Run workflow.
+# Added 2026-10-24.
+name: Replay on real gold data
+
+on:
+  workflow_dispatch:
+    inputs:
+      period:
+        description: "smoke = 1-month check · screen = 2020-2024 (half the minutes) · rest = 2015-2019 · development = 2015-2024 · final = 2025-26 (run ONCE, at the very end) · control = random data"
+        type: choice
+        options: [smoke, screen, rest, development, final, control]
+        default: smoke
+      label:
+        description: "Name of this run in the variant log"
+        default: "v1"
+      settings:
+        description: "Bot settings for a variant, e.g. TRAIL_ATR_MULT=1.5;COST_MAX_FRAC=0.08 (empty = v1 as deployed)"
+        default: ""
+      spread_mult:
+        description: "Spread multiplier: 1 = Ultra Low-like, 2.2 = Standard-like"
+        default: "1"
+      reuse_run:
+        description: "Re-analyse the saved results of an earlier run (its run ID) instead of replaying again. Takes ~2 minutes; not added to the variant log."
+        default: ""
+      reuse_run_2:
+        description: "A second earlier run whose saved results are added, e.g. a screen run (reuse_run) plus its rest run, judged as development. Added to the variant log."
+        default: ""
+
+permissions:
+  contents: write
+  actions: read
+
+# One run per label at a time; different variants can run side by side (the
+# variant log is written with retries below, so they don't clash).
+concurrency:
+  group: replay-${{ inputs.label }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      parts: ${{ steps.p.outputs.parts }}
+    steps:
+      - id: p
+        run: |
+          case "${{ inputs.period }}" in
+            smoke)       echo 'parts=["2024-03"]' >> "$GITHUB_OUTPUT" ;;
+            screen)      echo 'parts=["2020","2021","2022","2023","2024"]' >> "$GITHUB_OUTPUT" ;;
+            rest)        echo 'parts=["2015","2016","2017","2018","2019"]' >> "$GITHUB_OUTPUT" ;;
+            development) echo 'parts=["2015","2016","2017","2018","2019","2020","2021","2022","2023","2024"]' >> "$GITHUB_OUTPUT" ;;
+            final)       echo 'parts=["2025","2026"]' >> "$GITHUB_OUTPUT" ;;
+            control)     echo 'parts=["2019","2023"]' >> "$GITHUB_OUTPUT" ;;
+          esac
+
+  replay:
+    needs: plan
+    if: inputs.reuse_run == ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      BOT_URL: ${{ secrets.BOT_URL }}
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        part: ${{ fromJSON(needs.plan.outputs.parts) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install
+        run: |
+          npm install --omit=dev --no-audit --no-fund
+      - name: Work out dates
+        id: d
+        run: |
+          P="${{ matrix.part }}"
+          if [ "${#P}" = 7 ]; then
+            echo "from=$P-01" >> "$GITHUB_OUTPUT"
+            echo "to=$(date -u -d "$P-01 +1 month" +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+            echo "dfrom=$(date -u -d "$P-01 -75 days" +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+            echo "dto=$(date -u -d "$P-01 +1 month +2 days" +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+          else
+            echo "from=$P-01-01" >> "$GITHUB_OUTPUT"
+            echo "to=$((P+1))-01-01" >> "$GITHUB_OUTPUT"
+            echo "dfrom=$(date -u -d "$P-01-01 -75 days" +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+            echo "dto=$((P+1))-01-03" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Cache price data
+        if: inputs.period != 'control'
+        uses: actions/cache@v4
+        with:
+          path: tools/replay/data/xauusd-${{ matrix.part }}.csv.gz
+          key: xauusd-m1-${{ matrix.part }}-v3
+      - name: Download price data (Dukascopy, or HistData if Dukascopy is blocked)
+        if: inputs.period != 'control'
+        run: python3 tools/replay/fetch_data.py --from ${{ steps.d.outputs.dfrom }} --to ${{ steps.d.outputs.dto }} --name ${{ matrix.part }}
+      - name: Measured spreads from the live bot (optional secret BOT_URL)
+        if: env.BOT_URL != ''
+        run: curl -fsS --max-time 30 "$BOT_URL/api/v1/spreads" -o tools/replay/spreads.json || rm -f tools/replay/spreads.json
+      - name: Replay
+        run: |
+          EXTRA=""
+          if [ -s tools/replay/spreads.json ]; then EXTRA="--spreads tools/replay/spreads.json"; fi
+          if [ "${{ inputs.period }}" = "control" ]; then
+            EXTRA="$EXTRA --synthetic --seed ${{ matrix.part }}"
+          else
+            EXTRA="$EXTRA --data tools/replay/data/xauusd-${{ matrix.part }}.csv.gz"
+          fi
+          node tools/replay/replay.js --from ${{ steps.d.outputs.from }} --to ${{ steps.d.outputs.to }} \
+            --out results/${{ matrix.part }}.json --spread-mult "${{ inputs.spread_mult }}" \
+            --env "${{ inputs.settings }}" --label "${{ inputs.label }}" $EXTRA
+      - uses: actions/upload-artifact@v4
+        with:
+          name: replay-${{ matrix.part }}
+          path: results/${{ matrix.part }}.json
+          retention-days: 30
+
+  verdict:
+    needs: replay
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: actions/download-artifact@v4
+        if: inputs.reuse_run == ''
+        with:
+          path: results
+          pattern: replay-*
+          merge-multiple: true
+      - name: Saved results of run ${{ inputs.reuse_run }}
+        if: inputs.reuse_run != ''
+        uses: actions/download-artifact@v4
+        with:
+          path: results
+          pattern: replay-*
+          merge-multiple: true
+          run-id: ${{ inputs.reuse_run }}
+          github-token: ${{ github.token }}
+      - name: Saved results of run ${{ inputs.reuse_run_2 }}
+        if: inputs.reuse_run != '' && inputs.reuse_run_2 != ''
+        uses: actions/download-artifact@v4
+        with:
+          path: results
+          pattern: replay-*
+          merge-multiple: true
+          run-id: ${{ inputs.reuse_run_2 }}
+          github-token: ${{ github.token }}
+      - name: Verdict
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          LOG="--log tools/replay/VARIANTS.md"
+          if [ -n "${{ inputs.reuse_run }}" ] && [ -z "${{ inputs.reuse_run_2 }}" ]; then LOG=""; fi
+          node tools/replay/verdict.js --dir results --period "${{ inputs.period }}" --label "${{ inputs.label }}" --md verdict.md $LOG
+          cat verdict.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Record the run in the variant log
+        if: inputs.period != 'smoke' && (inputs.reuse_run == '' || inputs.reuse_run_2 != '')
+        run: |
+          git config user.name "replay-bot"
+          git config user.email "replay-bot@users.noreply.github.com"
+          # Re-apply this run's row on top of the latest branch, so two runs
+          # finishing together don't conflict.
+          ROW=$(git diff -U0 -- tools/replay/VARIANTS.md | grep '^+|' | sed 's/^+//' | tail -n 1)
+          [ -n "$ROW" ] || exit 0
+          for i in 1 2 3 4 5; do
+            if git fetch -q origin "$GITHUB_REF_NAME" && git reset -q --hard FETCH_HEAD; then
+              grep -qxF -- "$ROW" tools/replay/VARIANTS.md || printf '%s\n' "$ROW" >> tools/replay/VARIANTS.md
+              git add tools/replay/VARIANTS.md
+              git commit -q -m "Replay log: ${{ inputs.label }} (${{ inputs.period }}) [skip ci] [skip render]" || exit 0
+              git push -q origin HEAD:"$GITHUB_REF_NAME" && exit 0
+            fi
+            sleep $((i * 5))
+          done
+          exit 1

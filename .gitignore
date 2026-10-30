@@ -1,0 +1,210 @@
+# ════════════════════════════════════════════════════════════
+#  ICT GOLD BOT PRO — .gitignore
+# ════════════════════════════════════════════════════════════
+
+# ── Dependencies ──────────────────────────────────────────
+node_modules/
+package-lock.json
+yarn-lock.json
+pnpm-lock.yaml
+
+# ── Environment (Sensitive) ──────────────────────────────
+.env
+.env.local
+.env.*.local
+.env.production
+.env.staging
+.env.test
+
+# ── Runtime Data ──────────────────────────────────────────
+/data/
+/tmp/
+*.db
+*.sqlite
+*.sqlite3
+bot-state.json
+bot-state.bak.json
+zone_memory.json
+server-cache.json
+*.lock
+
+# ── NeDB Database Files ──────────────────────────────────
+*.db
+*.db-shm
+*.db-wal
+trades.db
+trades.db-shm
+trades.db-wal
+state.db
+state.db-shm
+state.db-wal
+zones.db
+zones.db-shm
+zones.db-wal
+backtests.db
+backtests.db-shm
+backtests.db-wal
+*.nedb
+*.nedb-shm
+*.nedb-wal
+backtest_results.json
+
+# ── Backups ──────────────────────────────────────────────
+*.bak
+*.json.bak
+backups/
+*.backup
+*.old
+*.orig
+
+# ── Logs ──────────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+logs/
+*.log.*
+access.log
+error.log
+combined.log
+
+# ── IDE / OS ──────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+*.iml
+*.class
+*.code-workspace
+.vscode-test/
+
+# ── Coverage ──────────────────────────────────────────────
+coverage/
+.nyc_output/
+*.lcov
+*.cov
+.coveralls.yml
+coverage.json
+
+# ── Secrets ──────────────────────────────────────────────
+*.pem
+*.key
+*.crt
+*.cert
+*.p12
+*.pfx
+*.p8
+*.der
+*.csr
+*.jks
+*.keystore
+*.pem
+
+# ── Build Output ──────────────────────────────────────────
+dist/
+build/
+*.min.js
+*.min.css
+*.bundle.js
+*.bundle.css
+.next/
+out/
+public/build/
+
+# ── Temporary ──────────────────────────────────────────────
+*.tmp
+temp/
+*.temp
+.cache/
+.tmp/
+*.swp
+*.swo
+
+# ── Prisma (Optional) ──────────────────────────────────────
+node_modules/.prisma/
+node_modules/@prisma/
+prisma/*.db
+prisma/*.sqlite*
+prisma/migrations/*.sqlite
+prisma/migrations/*.sqlite-journal
+prisma/studio.db*
+prisma/.studio/
+!prisma/migrations/*/*.sql
+
+# ── Database ──────────────────────────────────────────────
+*.dump
+*.sql
+*.psql
+.pgpass
+.pg_service.conf
+pg_hba.conf
+postgresql.conf
+*.sql.bak
+
+# ── Render / Deployment ──────────────────────────────────
+*.render
+render.yaml.local
+deploy.log
+deploy-*.log
+
+# ── GitHub Actions ──────────────────────────────────────
+.github/workflows/*.local
+.github/*.local
+
+# ── API Keys / Tokens ──────────────────────────────────────
+*.api
+*.token
+*.secret
+*.keychain
+auth.json
+serviceAccount.json
+firebase-admin.json
+
+# ── TypeScript ──────────────────────────────────────────
+*.tsbuildinfo
+*.d.ts.map
+*.js.map
+
+# ── NPM / Yarn ────────────────────────────────────────────
+.npmrc
+.yarnrc
+.yarn/
+.pnp.*
+.pnp.js
+.yarn-integrity
+
+# ── Editor Specific ──────────────────────────────────────
+.sublime-project
+.sublime-workspace
+*.sublime-*
+
+# ── OS Generated ──────────────────────────────────────────
+*.exe
+*.dll
+*.so
+*.dylib
+*.bin
+*.o
+*.obj
+*.pyc
+*.pyo
+
+# ── Testing ──────────────────────────────────────────────
+test-results/
+junit.xml
+.nyc_output/
+*.test.js
+*.spec.js
+
+# ── Misc ──────────────────────────────────────────────────
+*.zip
+*.tar
+*.gz
+*.7z
+*.rar
+.DS_Store?*
+.Trashes
+*.localized
