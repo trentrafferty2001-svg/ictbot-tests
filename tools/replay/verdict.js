@@ -24,6 +24,10 @@ const isTrend = runs.some(r => String(((r.settings || {}).env || {}).V1_STRATEGY
 if (isTrend) minTrades = period === 'screen' ? 150 : period === 'rest' ? 100 : 300;
 // So does the ICT 2022 model (V1_STRATEGY=ict2022), rules I1-I5.
 const isIct = runs.some(r => String(((r.settings || {}).env || {}).V1_STRATEGY || '').toLowerCase() === 'ict2022');
+// Silver Bullet and OTE use the same I1-I5, with I4 over years with 15+ trades
+// (RULES.md, written before their first runs). Added 2026-10-30.
+const isIctPlus = runs.some(r => ['silverbullet', 'ote'].indexOf(String(((r.settings || {}).env || {}).V1_STRATEGY || '').toLowerCase()) !== -1);
+if (isIctPlus) minTrades = period === 'screen' || period === 'rest' ? 150 : 300;
 if (isIct) minTrades = period === 'screen' || period === 'rest' ? 150 : 300;
 // EA strategies (V1_STRATEGY=ea, src/ea/strategies), rules E1-E5. Added 2026-10-30.
 const isEa = runs.some(r => String(((r.settings || {}).env || {}).V1_STRATEGY || '').toLowerCase() === 'ea');
@@ -73,9 +77,9 @@ if (K > 0 && modelN > 0) {
 // ── the rules (see RULES.md — written before the first run) ───────────────
 const rules = [];
 const add = (id, text, ok) => rules.push({ id, text, ok });
-if (period === 'final' && (isTrend || isIct || isEa)) {
+if (period === 'final' && (isTrend || isIct || isIctPlus || isEa)) {
   add('F1', 'at least 80 trades', n >= 80);
-  add('F2', 'mean R > 0 with t ≥ ' + (isIct || isEa ? 2 : 1.5), m > 0 && t >= (isIct || isEa ? 2 : 1.5));
+  add('F2', 'mean R > 0 with t ≥ ' + (isIct || isIctPlus || isEa ? 2 : 1.5), m > 0 && t >= (isIct || isIctPlus || isEa ? 2 : 1.5));
   add('F3', 'beats ≥ 95% of random-entry runs', pct >= 95);
 } else if (period === 'final') {
   add('F1', 'at least 300 trades', n >= 300);
@@ -107,6 +111,14 @@ if (period === 'final' && (isTrend || isIct || isEa)) {
   add('I3', 'beats ≥ 95% of random-entry runs (same exits)', pct >= 95);
   add('I4', 'positive in ≥ 2/3 of years (years with ≥ 30 trades)', judged.length > 0 && posYears / judged.length >= 2 / 3);
   add('I5', 'still positive with costs × 1.5', m15 > 0);
+} else if (isIctPlus) {
+  // Silver Bullet / OTE (RULES.md, written before their first runs)
+  const j15 = yearRows.filter(r => r.n >= 15);
+  add('I1', 'at least ' + minTrades + ' trades', n >= minTrades);
+  add('I2', 'mean R > 0 after costs with t ≥ 3', m > 0 && t >= 3);
+  add('I3', 'beats ≥ 95% of random-entry runs (same exits)', pct >= 95);
+  add('I4', 'positive in ≥ 2/3 of years (years with ≥ 15 trades)', j15.length > 0 && j15.filter(r => r.m > 0).length / j15.length >= 2 / 3);
+  add('I5', 'still positive with costs × 1.5', m15 > 0);
 } else {
   // screen = 2020–2024 only (84% of v1's development trades, half the
   // GitHub minutes); rest = 2015–2019, judged only together with its screen.
@@ -117,7 +129,7 @@ if (period === 'final' && (isTrend || isIct || isEa)) {
   add('D5', 'still positive with costs × 1.5', m15 > 0);
   add('D6', 'higher scores do better (top third > bottom third)', high.length > 20 && mean(high) > mean(low));
 }
-const enough = period === 'final' ? n >= (isTrend || isIct || isEa ? 80 : 300) : period === 'control' ? n >= 30 : n >= minTrades;
+const enough = period === 'final' ? n >= (isTrend || isIct || isIctPlus || isEa ? 80 : 300) : period === 'control' ? n >= 30 : n >= minTrades;
 const replayErrors = [].concat(...runs.map(r => r.errors || [])).length;
 // smoke = "does the pipeline run": data downloaded, trades taken, no errors.
 const verdict = period === 'smoke' ? (replayErrors || !n ? 'SMOKE TEST: PROBLEM (' + (n ? replayErrors + ' errors' : 'no trades') + ')' : 'SMOKE TEST OK — run "development" next')

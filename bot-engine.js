@@ -5362,7 +5362,7 @@ function v1Settings() {
         minStopAtr: _v1Num(sv.minStopAtr, 'V1_MIN_STOP_ATR', 0),   // 0 = off; see placeTrade
         dailyTrend: _v1Bool(sv.v1DailyTrend, 'V1_DAILY_TREND', false),  // off; see v1EntryFilters
         sweepAtr: _v1Num(sv.v1SweepAtr, 'V1_SWEEP_ATR', 0),            // 0 = off; see v1EntryFilters
-        strategy: (x => x === 'trend' || x === 'ict2022' || x === 'ea' ? x : 'ict')(String(sv.v1Strategy || process.env.V1_STRATEGY || 'ict').trim().toLowerCase()),  // see TREND, ICT, EA
+        strategy: (x => x === 'trend' || x === 'ict2022' || x === 'silverbullet' || x === 'ote' || x === 'ea' ? x : 'ict')(String(sv.v1Strategy || process.env.V1_STRATEGY || 'ict').trim().toLowerCase()),  // see TREND, ICT, EA
         eaId: String(sv.v1Ea || process.env.V1_EA || '').trim().toLowerCase(),  // EA mode: which src/ea/strategies/<id>.json
         ictTf: String(sv.v1IctTf || process.env.V1_ICT_TF || '5m').trim().toLowerCase() === '15m' ? '15m' : '5m',  // see ICT
         setupTf: String(sv.v1SetupTf || process.env.V1_SETUP_TF || '15m').trim().toLowerCase() === '1h' ? '1h' : '15m',  // see v1AnalysisFrames
@@ -6084,13 +6084,14 @@ function ictScan(candles, nowMs, tfMin) {
 function ictJournal(rec, fillPrice, fillTime) {
     // fillPrice known (a filled limit order): recorded now; unknown (a market
     // order): v1's management records the fill on its next pass.
-    const acct = global._v1Account || {}, a = { signal: rec.dir, score: 0, hits: (rec.hits || []).slice(), session: getSessionContext(), tradeDuration: 'normal', entryType: 'ict2022' };
-    const extra = { strategyVersion: STRATEGY_VERSION + '-ict2022', strategy: 'ict2022', riskAmount: Math.round(rec.riskAmount * 100) / 100, riskPct: Math.round(rec.riskPct * 1000) / 1000,
+    const model = rec.strategy || 'ict2022';
+    const acct = global._v1Account || {}, a = { signal: rec.dir, score: 0, hits: (rec.hits || []).slice(), session: getSessionContext(), tradeDuration: 'normal', entryType: model };
+    const extra = { strategyVersion: STRATEGY_VERSION + '-' + model, strategy: model, riskAmount: Math.round(rec.riskAmount * 100) / 100, riskPct: Math.round(rec.riskPct * 1000) / 1000,
         costFrac: Math.round(rec.costFrac * 10000) / 10000, spreadAtEntry: rec.spread, decisionPrice: rec.limit, currency: acct.currency || null, finalTp: rec.finalTp };
     if (fillPrice > 0) { extra.fillPrice = fillPrice; extra.slippage = Math.round((rec.dir === 'buy' ? fillPrice - rec.limit : rec.limit - fillPrice) * 100) / 100; }
     const ft = fillTime ? new Date(fillTime) : null;
     if (ft && Number.isFinite(ft.getTime())) { extra.ts = ft.toISOString(); extra.sessionHour = ft.getUTCHours(); extra.dayOfWeek = ft.getUTCDay(); }
-    journalTrade(rec.orderId, a, rec.limit, rec.sl, rec.finalTp, rec.lots, rec.tp1, 0, 0, ['ICT2022'], extra);
+    journalTrade(rec.orderId, a, rec.limit, rec.sl, rec.finalTp, rec.lots, rec.tp1, 0, 0, [model === 'ict2022' ? 'ICT2022' : model.toUpperCase()], extra);
     if (fillPrice > 0) savePositionState(rec.orderId, { _fillRec: true });
     updateBotState({ lastTradeTime: Date.now() });
 }
@@ -6114,10 +6115,11 @@ async function v1IctSync(cfg, V1, positions, quote) {
     if (ord) {
         const isBuy = p.dir === 'buy', px = quote && (isBuy ? +quote.ask : +quote.bid);
         let why = null;
-        if (!V1 || V1.strategy !== 'ict2022') why = 'the ICT mode was switched off';
-        else if (now >= p.expiresAt) why = 'not filled within ' + ICT.orderBars + ' candles';
+        if (!V1 || V1.strategy !== (p.strategy || 'ict2022')) why = 'the ' + (ICT_NAME[p.strategy || 'ict2022']) + ' mode was switched off';
+        else if (now >= p.expiresAt) why = (p.strategy === 'silverbullet' ? 'not filled by the window\'s end' : 'not filled within ' + (p.strategy === 'ote' ? OTE.orderBars : ICT.orderBars) + ' candles');
         else if (v1EntryTimeBlock(now)) why = v1EntryTimeBlock(now);
-        else if (px > 0 && (isBuy ? px >= p.finalTp : px <= p.finalTp)) why = 'price reached the 2R target without a pullback';
+        else if (p.cancelBeyond > 0 && px > 0 && (isBuy ? px > p.cancelBeyond : px < p.cancelBeyond)) why = 'price went past the move\'s end (' + (+p.cancelBeyond).toFixed(2) + ') first';
+        else if (px > 0 && (isBuy ? px >= p.finalTp : px <= p.finalTp)) why = 'price reached the target without a pullback';
         if (!why) return;
         try { await maPost(cfg, '/trade', { actionType: 'ORDER_CANCEL', orderId: p.orderId }); }
         catch (e) { logger.warn('[ict] cancel of order #' + p.orderId + ' failed: ' + e.message); return; }
@@ -6154,16 +6156,23 @@ async function v1IctPlace(cfg, V1, s, o) {
     let market = false, entry = s.entry;
     if (isBuy ? px <= s.entry : px >= s.entry) {
         // Already inside the gap: enter at market (at or better than the limit).
-        if (isBuy ? px < s.far : px > s.far) return { ok: false, blocked: true, error: 'price already went through the fair value gap' };
+        if (isBuy ? px < s.far : px > s.far) return { ok: false, blocked: true, error: s.model === 'ote' ? 'price already went through the 79% level' : 'price already went through the fair value gap' };
         market = true; entry = px;
     }
     if (isBuy ? entry - sl <= tick : sl - entry <= tick) return { ok: false, blocked: true, error: 'price is already at the stop' };
     // The stop belongs beyond the raid: if the stop ceiling would pull it in, skip.
     const vsl = parseFloat(validateStopLoss(cfg, entry, sl, dir, spec, true, o.atr14).toFixed(2));
-    if (isBuy ? vsl > sl + 0.005 : vsl < sl - 0.005) return { ok: false, blocked: true, error: 'the stop beyond the raid (' + Math.abs(entry - sl).toFixed(2) + ') is wider than the ceiling' };
+    if (isBuy ? vsl > sl + 0.005 : vsl < sl - 0.005) return { ok: false, blocked: true, error: 'the stop beyond the ' + (s.model === 'ote' ? 'move\'s start' : s.model === 'silverbullet' ? 'gap\'s first candle' : 'raid') + ' (' + Math.abs(entry - sl).toFixed(2) + ') is wider than the ceiling' };
     sl = vsl;
-    const R = Math.abs(entry - sl);
+    const R = Math.abs(entry - sl), model = s.model || 'ict2022', name = ICT_NAME[model] || 'ICT';
     let tp1 = isBuy ? entry + ICT.tp1R * R : entry - ICT.tp1R * R, fin = isBuy ? entry + ICT.finalR * R : entry - ICT.finalR * R;
+    if (model === 'ote') { tp1 = s.tp1Price; fin = s.finalPrice; }   // the old high/low, then the -27% extension
+    else if (model === 'silverbullet') {
+        fin = s.targetPrice;                                          // the liquidity level
+        const room = Math.abs(fin - entry) / R;
+        if (room < SB.minRoomR - 1e-9) return { ok: false, blocked: true, error: 'the ' + s.level + ' is only ' + room.toFixed(1) + 'R away with the spread (needs ' + SB.minRoomR + 'R)' };
+    }
+    if (isBuy ? !(tp1 > entry && fin >= tp1) : !(tp1 < entry && fin <= tp1)) return { ok: false, blocked: true, error: 'targets on the wrong side of the entry' };
     tp1 = parseFloat(validateTakeProfit(cfg, entry, tp1, sl, dir, spec, o.atr14).toFixed(2));
     fin = parseFloat(validateTakeProfit(cfg, entry, fin, sl, dir, spec, o.atr14).toFixed(2));
     entry = parseFloat(entry.toFixed(2));
@@ -6201,31 +6210,36 @@ async function v1IctPlace(cfg, V1, s, o) {
     // Saved under the order's ticket, which becomes the position id in MT5.
     savePositionState(id, { _v1: true, _ict: true, _score: 0, _tp1: tp1, _tp2: 0, _tp3: 0, _finalTp: fin, _entryPrice: entry, _sl: sl, _atr: o.atr14,
         _tradeDuration: 'normal', _runner: runner, _partialLot: runner ? smallLot : 0, _ladder: ladder, _serverTrail: serverTrail, _initialRisk: R,
-        _riskAmount: size.riskAmount, _tradeRisk: size.riskAmount, _decisionPrice: entry, _spreadAtEntry: spr, _strategyVersion: STRATEGY_VERSION + '-ict2022' });
-    const hits = ['🎯 ICT 2022: ' + s.kz + ' killzone raid of the ' + s.level + ' (' + s.levelPrice.toFixed(2) + '), extreme ' + s.ext.toFixed(2),
-        '↩️ Shift: close ' + (isBuy ? 'above ' : 'below ') + s.ref.toFixed(2) + ', fair value gap ' + Math.min(s.entry, s.far).toFixed(2) + '–' + Math.max(s.entry, s.far).toFixed(2)];
+        _riskAmount: size.riskAmount, _tradeRisk: size.riskAmount, _decisionPrice: entry, _spreadAtEntry: spr, _strategyVersion: STRATEGY_VERSION + '-' + model });
+    const gapTxt = Math.min(s.entry, s.far).toFixed(2) + '–' + Math.max(s.entry, s.far).toFixed(2);
+    const hits = model === 'silverbullet'
+        ? ['🎯 Silver Bullet: ' + s.kz + ', fair value gap ' + gapTxt, '🧲 Target: the untouched ' + s.level + ' (' + s.levelPrice.toFixed(2) + '), ' + s.room.toFixed(1) + 'R from the gap']
+        : model === 'ote'
+        ? ['🎯 OTE: 1-hour move ' + s.moveStart.toFixed(2) + ' → ' + s.moveEnd.toFixed(2) + ' broke the swing at ' + s.ref.toFixed(2), '📐 Entry at its 70.5% retracement, stop at its start, one lot at ' + s.moveEnd.toFixed(2) + ', the rest at the −27% extension']
+        : ['🎯 ICT 2022: ' + s.kz + ' killzone raid of the ' + s.level + ' (' + s.levelPrice.toFixed(2) + '), extreme ' + s.ext.toFixed(2),
+           '↩️ Shift: close ' + (isBuy ? 'above ' : 'below ') + s.ref.toFixed(2) + ', fair value gap ' + gapTxt];
     const rec = { orderId: id, dir, limit: entry, sl, tp1, finalTp: fin, lots: size.lots, riskAmount: size.riskAmount, riskPct: size.riskPctActual, costFrac: frac, spread: spr,
-        placedAt: Date.now(), expiresAt: s.expiresAt, kzKey: s.kzKey, hits, market };
+        placedAt: Date.now(), expiresAt: s.expiresAt, kzKey: s.kzKey, hits, market, strategy: model, cancelBeyond: s.cancelBeyond || null };
     const C = acct.currency ? acct.currency + ' ' : '';
     if (market) { ictJournal(rec, 0, null); trackOpenPosition(id); }
     else updateBotState({ _ictPending: rec });
-    sendTelegram(['🎯 *ICT 2022 ' + (market ? 'TRADE' : 'ORDER') + '* — ' + dir.toUpperCase() + ' ' + size.lots + ' lot ' + (market ? 'at market ' : 'limit at ') + entry.toFixed(2), '',
-        'Stop: ' + sl.toFixed(2) + ' (' + R.toFixed(2) + ' away, beyond the raid) | TP1 ' + tp1.toFixed(2) + ' (1R, one small lot) | final ' + fin.toFixed(2) + ' (2R)',
+    sendTelegram(['🎯 *' + name + ' ' + (market ? 'TRADE' : 'ORDER') + '* — ' + dir.toUpperCase() + ' ' + size.lots + ' lot ' + (market ? 'at market ' : 'limit at ') + entry.toFixed(2), '',
+        'Stop: ' + sl.toFixed(2) + ' (' + R.toFixed(2) + ' away) | TP1 ' + tp1.toFixed(2) + ' (' + (Math.abs(tp1 - entry) / R).toFixed(1) + 'R, one small lot) | final ' + fin.toFixed(2) + ' (' + (Math.abs(fin - entry) / R).toFixed(1) + 'R)',
         'Risk: ' + C + size.riskAmount.toFixed(2) + ' (' + size.riskPctActual.toFixed(2) + '%)' + (market ? '' : ' · cancelled if not filled by ' + v1SastTime(s.expiresAt) + ' SAST')].concat(hits).join('\n'));
     return { ok: true, lots: size.lots, id, market };
 }
 // ICT 2022's whole entry step; the ICT score and analysis aren't run at all.
 async function v1IctCycle(cfg, V1, o) {
-    const now = Date.now(), st = global._botState || {}, tf = ictTfMin(V1);
-    const scan = ictScan(global._v1IctCandles, now, tf);
+    const now = Date.now(), st = global._botState || {}, tf = ictTfMin(V1), model = V1.strategy, name = ICT_NAME[model] || 'ICT';
+    const scan = model === 'silverbullet' ? sbScan(global._v1IctCandles, now, 5) : model === 'ote' ? oteScan(global._v1IctCandles, now) : ictScan(global._v1IctCandles, now, tf);
     global._v1IctLast = { at: now, why: scan.why || null, setup: scan.setup || null };
     if ((o.ourPositions || []).some(p => (loadPositionState(p.id) || {})._ict)) return { status: 'ict_holding', message: 'ICT trade open' };
     if (st._ictPending) return { status: 'ict_pending', message: 'ICT ' + st._ictPending.dir + ' limit waiting at ' + (+st._ictPending.limit).toFixed(2) };
     const s = scan.setup;
-    if (!s) return { status: 'no_signal', message: 'ICT: ' + scan.why };
-    if (st._ictLastKz === s.kzKey) return { status: 'no_signal', message: 'ICT: this killzone\'s setup was already used' };
-    let stale = now >= s.expiresAt ? 'expired before the bot saw it' : s.stopped ? 'price hit the stop level first' : s.through ? 'price went through the gap' : s.touched ? 'price pulled back to the entry before the order could be placed' : null;
-    if (stale) { updateBotState({ _ictLastKz: s.kzKey }); v1NoteBlock('ICT setup missed: ' + stale, { signal: s.dir, score: 0 }); return { status: 'v1_blocked', message: 'ICT setup missed: ' + stale }; }
+    if (!s) return { status: 'no_signal', message: name + ': ' + scan.why };
+    if (st._ictLastKz === s.kzKey) return { status: 'no_signal', message: name + ': this setup was already used' };
+    let stale = now >= s.expiresAt ? 'expired before the bot saw it' : s.stopped ? 'price hit the stop level first' : s.through ? (model === 'ote' ? 'price went through the 79% level' : 'price went through the gap') : s.targetHit ? 'price reached the target first' : s.touched ? 'price pulled back to the entry before the order could be placed' : null;
+    if (stale) { updateBotState({ _ictLastKz: s.kzKey }); v1NoteBlock(name + ' setup missed: ' + stale, { signal: s.dir, score: 0 }); return { status: 'v1_blocked', message: name + ' setup missed: ' + stale }; }
     const gate = v1EntryGate(V1, { now, m15: o.m15, atr: o.atr14, quote: o.spread, positions: o.ourPositions, usualSpread: cfg._v1UsualSpread });
     if (gate) { v1NoteBlock(gate, { signal: s.dir, score: 0 }); return { status: 'v1_blocked', message: 'Not placed: ' + gate }; }
     const r = await v1IctPlace(cfg, V1, s, o);
@@ -6235,7 +6249,165 @@ async function v1IctCycle(cfg, V1, o) {
         return { status: r.blocked ? 'v1_blocked' : 'trade_failed', message: 'Not placed: ' + r.error };
     }
     updateBotState({ _ictLastKz: s.kzKey });
-    return { status: r.market ? 'trade_placed' : 'order_placed', message: 'ICT ' + s.dir.toUpperCase() + ' ' + r.lots + ' lot ' + (r.market ? 'at market' : 'limit at ' + s.entry.toFixed(2)) };
+    return { status: r.market ? 'trade_placed' : 'order_placed', message: name + ' ' + s.dir.toUpperCase() + ' ' + r.lots + ' lot ' + (r.market ? 'at market' : 'limit at ' + s.entry.toFixed(2)) };
+}
+
+// ─── Silver Bullet and OTE (V1_STRATEGY=silverbullet / ote, off by default) ─
+// Two more of ICT's own setups, as exact rules (tools/replay/RULES.md, written
+// 30 Oct 2026 before any run). Both reuse the ICT 2022 model's order
+// handling (v1IctPlace / v1IctSync): a limit order, v1's sizing, cost check,
+// entry gate and exits. Only the setup and its targets differ.
+const ICT_FAMILY = ['ict2022', 'silverbullet', 'ote'];
+const isIctFamily = x => ICT_FAMILY.indexOf(x) !== -1;
+const ICT_NAME = { ict2022: 'ICT 2022', silverbullet: 'Silver Bullet', ote: 'OTE' };
+// Completed candles only, oldest first, with each one's trading-day clock.
+function ictPrep(candles, nowMs, span) {
+    const c = [];
+    for (const x of Array.isArray(candles) ? candles : []) {
+        const t = x && x.time != null ? new Date(x.time).getTime() : NaN, h = x ? +x.high : NaN, l = x ? +x.low : NaN;
+        if (!Number.isFinite(t) || t + span > nowMs || !(h >= l) || !(l > 0)) continue;
+        const dp = ictDayParts(t);
+        c.push({ t, o: +x.open, h, l, c: +x.close, day: dp.day, tdm: dp.tdm });
+    }
+    return c.sort((a, b) => a.t - b.t);
+}
+// Silver Bullet: in a one-hour window (New York 03:00, 10:00, 14:00), the
+// first fair value gap whose nearest untouched liquidity in its direction is
+// at least 2R away. Stop beyond the gap's first candle; target that liquidity.
+const SB = {
+    // minutes since the trading day began (17:00 New York)
+    windows: [{ key: 'sb03', label: '03:00', from: 600, to: 660 },
+              { key: 'sb10', label: '10:00', from: 1020, to: 1080 },
+              { key: 'sb14', label: '14:00', from: 1260, to: 1320 }],
+    asia: [180, 420], london: [540, 720], nyAm: [840, 1140], minRoomR: 2,
+};
+function sbScan(candles, nowMs, tfMin) {
+    const tf = tfMin || 5, span = tf * 60000, c = ictPrep(candles, nowMs, span), now = ictDayParts(nowMs);
+    let w = null;
+    for (const x of SB.windows) if (now.tdm >= x.from) w = x;
+    if (!w) return { why: 'waiting for the 03:00 New York window' };
+    const kzKey = now.day + '-' + w.key;
+    if (c.length < 30) return { kzKey, why: 'only ' + c.length + ' completed candles' };
+    const hi = a => Math.max(...a.map(x => x.h)), lo = a => Math.min(...a.map(x => x.l));
+    const days = [];
+    for (const x of c) if (days.indexOf(x.day) === -1) days.push(x.day);
+    days.sort((a, b) => a - b);
+    const today = c.filter(x => x.day === now.day), levels = [];
+    const prevDay = days.filter(d => d < now.day).pop();
+    if (prevDay !== undefined && days[0] < prevDay) {
+        const pd = c.filter(x => x.day === prevDay);
+        levels.push({ name: 'previous day high', side: 'high', price: hi(pd), from: 0 }, { name: 'previous day low', side: 'low', price: lo(pd), from: 0 });
+    }
+    const range = (r, name) => { const a = today.filter(x => x.tdm >= r[0] && x.tdm < r[1]); if (a.length) levels.push({ name: name + ' high', side: 'high', price: hi(a), from: r[1] }, { name: name + ' low', side: 'low', price: lo(a), from: r[1] }); };
+    range(SB.asia, 'Asian');
+    if (w.key !== 'sb03') range(SB.london, 'London');
+    if (w.key === 'sb14') range(SB.nyAm, 'New York morning');
+    if (!levels.length) return { kzKey, why: 'no liquidity levels for the ' + w.label + ' window' };
+    let why = 'no fair value gap in the ' + w.label + ' window yet';
+    for (let k = 2; k < c.length; k++) {
+        const b = c[k], a = c[k - 2];
+        if (b.day !== now.day || b.tdm < w.from || b.tdm + tf > w.to) continue;
+        if (b.t - a.t !== 2 * span) continue;                       // three consecutive candles
+        const isBuy = a.h < b.l, isSell = a.l > b.h;
+        if (!isBuy && !isSell) continue;
+        const near = isBuy ? b.l : b.h, far = isBuy ? a.h : a.l, ext = isBuy ? a.l : a.h, risk = Math.abs(near - ext);
+        if (!(risk > 0)) continue;
+        // untouched liquidity in the trade's direction, beyond the entry
+        let tgt = null;
+        for (const L of levels) {
+            if (L.side !== (isBuy ? 'high' : 'low') || !(isBuy ? L.price > near : L.price < near)) continue;
+            const spent = today.some(x => x.tdm >= L.from && x.t <= b.t && (isBuy ? x.h > L.price : x.l < L.price));
+            if (spent) continue;
+            if (!tgt || (isBuy ? L.price < tgt.price : L.price > tgt.price)) tgt = L;
+        }
+        if (!tgt) { why = (isBuy ? 'buy' : 'sell') + ' gap at ' + near.toFixed(2) + ' but no untouched liquidity ' + (isBuy ? 'above' : 'below'); continue; }
+        const room = Math.abs(tgt.price - near) / risk;
+        if (room < SB.minRoomR) { why = (isBuy ? 'buy' : 'sell') + ' gap at ' + near.toFixed(2) + ': the ' + tgt.name + ' is only ' + room.toFixed(1) + 'R away (needs ' + SB.minRoomR + 'R)'; continue; }
+        const confirmAt = b.t + span, expiresAt = confirmAt + (w.to - (b.tdm + tf)) * 60000;
+        let touched = false, through = false, stopped = false, targetHit = false;
+        for (let m = k + 1; m < c.length; m++) {
+            const x = c[m];
+            if (isBuy ? x.l <= near : x.h >= near) touched = true;
+            if (isBuy ? x.l < far : x.h > far) through = true;
+            if (isBuy ? x.l <= ext : x.h >= ext) stopped = true;
+            if (isBuy ? x.h >= tgt.price : x.l <= tgt.price) targetHit = true;
+        }
+        return { kzKey, levels, setup: {
+            model: 'silverbullet', dir: isBuy ? 'buy' : 'sell', kzKey, kz: w.label + ' window', level: tgt.name, levelPrice: tgt.price, targetPrice: tgt.price, room,
+            ext, entry: near, far, gapTime: b.t, confirmAt, expiresAt, touched, through, stopped, targetHit } };
+    }
+    return { kzKey, levels, why };
+}
+// OTE: after a move that broke structure, a limit at its 70.5% retracement.
+// Stop at the move's start; one lot at its end (the old high/low), the rest at
+// the -27% extension. 1-hour candles.
+const OTE = { entry: 0.705, far: 0.79, ext: 0.27, minAtr: 2, atrN: 14, orderBars: 12, lookback: 72 };
+function oteAtr(c, i, n) {
+    if (i < n) return null;
+    let s = 0;
+    for (let j = i - n + 1; j <= i; j++) s += Math.max(c[j].h - c[j].l, Math.abs(c[j].h - c[j - 1].c), Math.abs(c[j].l - c[j - 1].c));
+    return s / n;
+}
+// One direction: the latest move whose turn has been confirmed.
+function oteSide(c, isBuy) {
+    const sh = i => i > 0 && i < c.length - 1 && c[i].h > c[i - 1].h && c[i].h > c[i + 1].h;
+    const sl = i => i > 0 && i < c.length - 1 && c[i].l < c[i - 1].l && c[i].l < c[i + 1].l;
+    const isStart = isBuy ? sl : sh, isRef = isBuy ? sh : sl, moves = [];
+    let best = null;
+    for (let l = c.length - 2; l >= Math.max(1, c.length - OTE.lookback); l--) {
+        if (!isStart(l)) continue;
+        const L = isBuy ? c[l].l : c[l].h;
+        let s = -1;
+        for (let i = l - 1; i >= 1; i--) if (isRef(i)) { s = i; break; }
+        if (s < 0) continue;
+        const ref = isBuy ? c[s].h : c[s].l;
+        // the break: a close beyond the last swing before the start, before
+        // price goes back beyond the start
+        let b = -1;
+        for (let m = l + 1; m < c.length; m++) {
+            if (isBuy ? c[m].l < L : c[m].h > L) break;
+            if (isBuy ? c[m].c > ref : c[m].c < ref) { b = m; break; }
+        }
+        if (b < 0) continue;
+        // the move's end: its extreme, fixed once the next candle doesn't go further
+        // (the first candle from the break on that doesn't make a new extreme)
+        let hx = l, j = -1;
+        for (let m = l + 1; m < c.length; m++) {
+            if (isBuy ? c[m].l < L : c[m].h > L) break;
+            if (isBuy ? c[m].h > c[hx].h : c[m].l < c[hx].l) { hx = m; continue; }
+            if (m >= b) { j = m; break; }
+        }
+        if (j < 0) continue;
+        const H = isBuy ? c[hx].h : c[hx].l, rng = Math.abs(H - L), atr = oteAtr(c, b, OTE.atrN);
+        if (!(atr > 0) || rng < OTE.minAtr * atr) continue;
+        const sg = isBuy ? 1 : -1, entry = H - sg * OTE.entry * rng, far = H - sg * OTE.far * rng;
+        let touched = false, through = false, stopped = false, beyond = false;
+        for (let m = j + 1; m < c.length; m++) {
+            const x = c[m];
+            if (isBuy ? x.h > H : x.l < H) beyond = true;
+            if (isBuy ? x.l <= entry : x.h >= entry) touched = true;
+            if (isBuy ? x.l < far : x.h > far) through = true;
+            if (isBuy ? x.l <= L : x.h >= L) stopped = true;
+        }
+        best = { model: 'ote', dir: isBuy ? 'buy' : 'sell', kzKey: 'ote-' + (isBuy ? 'b' : 's') + '-' + c[l].t + '-' + c[hx].t, kz: '1-hour move',
+            level: (isBuy ? 'swing low ' : 'swing high ') + L.toFixed(2) + ' → ' + H.toFixed(2), levelPrice: H, ref,
+            moveStart: L, moveEnd: H, range: rng, atr, ext: L, entry, far, tp1Price: H, finalPrice: H + sg * OTE.ext * rng, cancelBeyond: H,
+            startTime: c[l].t, endTime: c[hx].t, confirmAt: c[j].t + 3600000, touched, through, stopped, beyond };
+        best.expiresAt = best.confirmAt + OTE.orderBars * 3600000;
+        moves.push(best);
+    }
+    // The latest move; of several starts that end at the same extreme, the
+    // furthest one (the whole move, not a dip inside it).
+    moves.sort((a, b) => (b.endTime - a.endTime) || (b.range - a.range));
+    return moves[0] || null;
+}
+function oteScan(candles, nowMs) {
+    const c = ictPrep(candles, nowMs, 3600000);
+    if (c.length < 40) return { why: 'only ' + c.length + ' completed 1-hour candles' };
+    const s = [oteSide(c, true), oteSide(c, false)].filter(Boolean).sort((a, b) => b.confirmAt - a.confirmAt)[0];
+    if (!s) return { why: 'no 1-hour move that broke structure and has turned' };
+    if (s.beyond) return { kzKey: s.kzKey, why: 'the latest ' + s.dir + ' move went on past ' + s.moveEnd.toFixed(2) + ', waiting for it to turn' };
+    return { kzKey: s.kzKey, setup: s };
 }
 
 // ─── Two-leg exits and the stop ladder ──────────────────────────────────────
@@ -6468,6 +6640,7 @@ function getV1StatusText() {
         ];
         if (set.strategy === 'trend') { const tl = global._v1TrendLast; lines.push('📈 Strategy: trend-following — 4-hour breakouts with the 200-candle trend, stop 2× ATR trailing at the 10-candle low/high, held overnight' + (tl && tl.at ? ' · now: ' + (tl.dir ? tl.dir + ' signal' : tl.why) : '')); }
         if (set.strategy === 'ea') { const S = v1EaStrategy(set), el = global._v1EaLast; lines.push('🤖 Strategy: EA formulas — ' + (S ? S.name + ' (' + S.id + ', ' + S.timeframe + ' candles)' : 'no strategy loaded (V1_EA=' + (set.eaId || 'not set') + ')') + (el && el.at ? ' · now: ' + (el.dir ? el.dir + ' signal' : el.why) : '')); if (S) lines.push(S.describe()); }
+        if (set.strategy === 'silverbullet' || set.strategy === 'ote') { const il = global._v1IctLast, pe = s._ictPending; lines.push('🎯 Strategy: ' + (set.strategy === 'ote' ? 'OTE on 1-hour candles — after a move that broke structure, a limit at its 70.5% pullback, stop at its start, one lot at its end, the rest at the −27% extension' : 'Silver Bullet on 5-minute candles — the first fair value gap in the 03:00 / 10:00 / 14:00 New York hours with untouched liquidity 2R+ away, stop beyond the gap, target that liquidity') + (pe ? ' · order waiting: ' + pe.dir + ' limit at ' + (+pe.limit).toFixed(2) : il && il.at ? ' · now: ' + (il.setup ? il.setup.dir + ' setup (' + il.setup.kz + ')' : il.why) : '')); }
         if (set.strategy === 'ict2022') { const il = global._v1IctLast, pe = s._ictPending; lines.push('🎯 Strategy: ICT 2022 model on ' + set.ictTf + ' candles — killzone raid of liquidity, shift with a fair value gap, limit entry in the gap, stop beyond the raid, 1R lot then 2R' + (pe ? ' · order waiting: ' + pe.dir + ' limit at ' + (+pe.limit).toFixed(2) : il && il.at ? ' · now: ' + (il.setup ? il.setup.dir + ' setup (' + il.setup.kz + ')' : il.why) : '')); }
         if (set.setupTf === '1h') lines.push('Setups: 1-hour chart (trend: daily / 4-hour / 1-hour), one new trade per 1-hour candle');
         if (set.dailyTrend || set.sweepAtr > 0) lines.push('Entry filters: ' + [set.dailyTrend ? 'daily trend must agree' : '', set.sweepAtr > 0 ? 'liquidity sweep of at least ' + set.sweepAtr + '× ATR' : ''].filter(Boolean).join(' · '));
@@ -6741,13 +6914,23 @@ async function _runCycleInner() {
     // ICT 2022 mode: setup candles (two days of history, for the previous
     // day's high and low) from the London killzone to the last order's
     // expiry; then the waiting limit order's fill or cancel. See ICT.
+    if (V1 && V1.strategy === 'silverbullet') {
+        // Silver Bullet: two days of 5-minute candles around its three windows.
+        const dp = ictDayParts(Date.now());
+        if (dp.tdm >= SB.windows[0].from - 5 && dp.tdm < SB.windows[2].to + 10) {
+            try { global._v1IctCandles = await getCandles(cfg, '5m', 640); } catch (e) { logger.warn('[sb] candles failed: ' + e.message); }
+        }
+    }
+    if (V1 && V1.strategy === 'ote') {
+        try { global._v1IctCandles = await getCandles(cfg, '1h', 200); } catch (e) { logger.warn('[ote] candles failed: ' + e.message); }
+    }
     if (V1 && V1.strategy === 'ict2022') {
         const tfm = ictTfMin(V1), dp = ictDayParts(Date.now());
         if (dp.tdm >= ICT.kzs[0].from - 5 && dp.tdm < ICT.kzs[1].confirmBy + ICT.orderBars * tfm + 5) {
             try { global._v1IctCandles = await getCandles(cfg, tfm === 15 ? '15m' : '5m', tfm === 15 ? 240 : 640); } catch (e) { logger.warn('[ict] candles failed: ' + e.message); }
         }
     }
-    if (V1 && (V1.strategy === 'ict2022' || (global._botState || {})._ictPending)) {
+    if (V1 && (isIctFamily(V1.strategy) || (global._botState || {})._ictPending)) {
         try { await v1IctSync(cfg, V1, ourPositions, spread); } catch (e) { logger.warn('[ict] order check failed: ' + e.message); }
     }
     if (ourPositions.length) {
@@ -6840,7 +7023,7 @@ async function _runCycleInner() {
     // Trend mode replaces the ICT analysis and entries entirely.
     if (V1 && V1.strategy === 'trend') return await v1TrendCycle(cfg, V1, { m15, atr14, spread, ourPositions, balance });
     // So does the ICT 2022 model (V1_STRATEGY=ict2022).
-    if (V1 && V1.strategy === 'ict2022') return await v1IctCycle(cfg, V1, { m15, atr14, spread, ourPositions, balance });
+    if (V1 && isIctFamily(V1.strategy)) return await v1IctCycle(cfg, V1, { m15, atr14, spread, ourPositions, balance });
     // And EA mode (V1_STRATEGY=ea): the formulas in src/ea/strategies/<V1_EA>.json.
     if (V1 && V1.strategy === 'ea') return await v1EaCycle(cfg, V1, { m15, atr14, spread, ourPositions, balance });
 
@@ -7974,6 +8157,10 @@ module.exports = {
     v1AnalysisFrames,
     v1TrendSignal,
     ictScan,
+    sbScan,
+    oteScan,
+    SB,
+    OTE,
     ictDayParts,
     ictTfMin,
     ICT,

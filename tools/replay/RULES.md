@@ -178,3 +178,37 @@ Trend tests run the bot every 15 minutes instead of 3, which saves GitHub minute
 **Final (2025–Oct 2026)** runs once, only after development passes: at least 80 trades, mean > 0 with t ≥ 2, and beats 95% of random entries. **Control (random prices)** must show no edge, as for the others.
 
 **`trend-4h`** is trend mode rewritten as formulas, so the engine can be checked against a strategy that was already coded by hand. Its run is a check that it reproduces trend mode's result (437 trades, −0.019R), not a new try.
+
+## Silver Bullet (`V1_STRATEGY=silverbullet`) and OTE (`V1_STRATEGY=ote`): rules written 30 Oct 2026, before their first runs
+
+**Where they come from.** ICT's own lessons, read as text summaries and transcripts (his videos can't be watched from here): the 2023 Mentorship lecture *ICT Silver Bullet Time Based Trading Model* and his *OTE Primer – Intro To ICT Optimal Trade Entry*, checked against independent write-ups of each. Where ICT leaves a choice to the trader, the choice made here is marked *(choice)*. Summaries can be wrong, so every rule below appears in at least two sources, or is marked as a choice.
+
+### Silver Bullet: a fair value gap in a one-hour window, aimed at liquidity
+
+What differs from the ICT 2022 model: **no raid or structure shift is required**, only the hour, a gap and room to a liquidity target; the target is that liquidity, not a fixed 2R; and the stop sits at the gap's first candle, not beyond a raid.
+
+- **Windows (New York clock):** 03:00–04:00, 10:00–11:00 and 14:00–15:00.
+- **The gap:** three completed 5-minute candles, the third closing inside the window. Buy: the first candle's high is below the third's low; sell: the mirror. Every size counts *(choice: ICT gives no minimum for gold)*.
+- **Liquidity (the target):** untouched highs for a buy, untouched lows for a sell, from: the previous trading day's high and low; the Asian range (20:00–00:00); for the 10:00 and 14:00 windows also the London killzone (02:00–05:00); for the 14:00 window also the New York morning (07:00–12:00). A level is untouched if no candle since it formed, up to the gap's third candle, has traded beyond it.
+- **Entry:** a limit order at the gap's near edge (the third candle's low for a buy) *(choice, as for the 2022 model)*. At market if price is already inside the gap; no trade if price is already through it or already came back to the entry.
+- **Stop:** beyond the gap's first candle (its low for a buy) by the spread *(choice: the usual reading; ICT's lecture doesn't fix it)*.
+- **Room:** the nearest untouched level in the trade's direction must be at least **2R** from the entry *(choice: ICT says the move must justify the risk and uses 2:1 as the minimum elsewhere)*. If the nearest one is closer, that gap is skipped and the next gap in the window is checked.
+- **Targets:** one small lot at 1R (v1's TP1 lot, breakeven and ladder), the rest at that liquidity level.
+- **Order life:** cancelled if not filled by the window's end (ICT: the entry happens inside the hour; the trade may run after it), if price reaches the target first, or before XM's daily break.
+- **Limits:** the first qualifying gap per window, so at most three setups a day; one Silver Bullet trade or order at a time.
+
+### OTE: buy the 62–79% pullback of a move that broke structure
+
+- **Candles:** 1-hour (ICT: hourly setups are cleaner than lower timeframes).
+- **Swings:** a swing high is a candle whose high is above both neighbours' highs; a swing low is the mirror.
+- **The move (buy; sell is the mirror):** from a swing low L, a candle closes above the last swing high that formed before L (the break in structure). The move's high H is the highest high since L. It is fixed once a later candle confirms H as a swing high (the pullback has begun).
+- **Size:** H − L must be at least 2× the 1-hour ATR(14) at the break *(choice: ICT asks for an impulse but gives no size)*.
+- **Entry:** a limit at the **70.5%** retracement, H − 0.705 × (H − L): ICT's "sweet spot" inside the 62–79% zone.
+- **Stop:** L, beyond by the spread (ICT: the stop goes exactly at the swing low).
+- **Targets:** one small lot at H, the old high (ICT's first profit, ≈2.4R), then breakeven and v1's ladder; the rest at the −27% extension, H + 0.27 × (H − L) (ICT's first extension target, ≈3.3R) *(choice: the 1st of his extension targets, not the 2nd)*.
+- **Order life:** cancelled if not filled within 12 hourly candles, if price trades beyond H first (a new high starts a new move), or before XM's daily break.
+- **Limits:** one setup per move; one OTE trade or order at a time. No killzone or higher-timeframe filter *(choice: the OTE Primer gives none)*.
+
+**What stays from v1, for both.** Sizing, the cost check (spread + slippage at most 10% of the stop), the entry gate (news, daily stop, trading hours, data checks) and the exits (8-hour limit, flat before XM's daily break). Live lot cap `V1_MAX_LOTS=0.02`. Cycle 3 minutes. Nothing is tuned after a run.
+
+**Development (2015–2024): all five must hold, for each.** The same rules as the 2022 model (I1–I5): at least 300 trades; mean R > 0 after costs with t ≥ 3; beats ≥ 95% of random entries with the same exits; positive in at least two-thirds of the years that have **15+** trades *(15 rather than 30, because the OTE takes fewer trades a year)*; still positive with costs raised by 50%. **Control (random prices)** must show no edge. **Final (2025–Oct 2026)** runs once, only after development passes: at least 80 trades, mean > 0 with t ≥ 2, beats 95% of random entries.
