@@ -265,3 +265,37 @@ What differs from the ICT 2022 model: **no raid or structure shift is required**
 | P5 | Still positive with costs and swaps raised by 50% | Real swaps on CFDs may be worse than modelled |
 
 Each market's own result is reported but not required to pass. **Final (2025–Oct 2026)** runs once, only if the four together pass. Nothing is tuned after a run: other lookbacks (20/10, 100/50...) would be new strategies and new rows in the variant log.
+
+## Daily trend portfolio (`V1_STRATEGY=ea`, `V1_EA=trend-50d`, period `portfolio`): rules written 30 Oct 2026, before any run
+
+**Why this one, and why now.** On 30 Oct 2026 the signal study (S1) on v1's 2020–2024 screen failed: 60 minutes after entry the bot's entries were +0.091R ahead of nearby days (t = 1.63), while the median cost was 0.080R. The intraday entries point the right way by about what they cost, and no better. Every intraday variant since 24 Oct has failed for that reason (35+ rows in the variant log). The one family with a long published record is trend-following across many markets (Hurst, Ooi and Pedersen, AQR 2017; Clenow, *Following the Trend*, 2013). The Turtle test on four markets failed P2–P4 with 122 trades: too few markets. This test spreads one slow, standard rule over ten markets, on daily candles, where costs are a small share of each stop.
+
+**The strategy** is the file `src/ea/strategies/trend-50d.json`, committed with these rules and not changed after any run:
+- **Trend filter:** buys only while the daily close is above its 200-day simple average; sells only while it is below.
+- **Entry:** the daily close breaks the highest high (buys) or lowest low (sells) of the 50 days before it.
+- **Stop:** 2 × ATR(20) from the entry. No target.
+- **Exit:** the stop trails at the 20-day low (buys) or high (sells), only tightening.
+- One position per market, held overnight and over weekends.
+- *(choices)* 50/20 days and the 200-day filter follow Clenow's published core system (he uses 50/100-day averages and a 3-ATR trail; the 20-day trailing exit and 2-ATR stop are the Turtle ones already in this repo). These numbers are fixed now; others would be new strategies and new rows in the variant log.
+
+**Markets (ten, as XM lists them; data from Dukascopy, else HistData; Bitstamp for bitcoin):** gold (`XAUUSD`), silver (`XAGUSD`), US oil (`OILCash#`, data: WTI), Nasdaq 100 (`US100Cash#`), S&P 500 (`US500Cash#`), bitcoin (`BTCUSD#`), EURUSD, GBPUSD, USDJPY, AUDUSD. The DAX is left out: its HistData file holds another index from Jun 2020 to Dec 2023.
+
+**Costs (estimates written before any run; P5 raises them by half):**
+- Spreads in London/New York hours: silver $0.03, oil $0.04, S&P 500 0.6 points, EURUSD 1.0 pip, GBPUSD 1.5 pips, USDJPY 1.2 pips, AUDUSD 1.2 pips; ×1.4 outside those hours, ×2.5 within 30 minutes of the daily break, ×1.5 more in the first hour of the week. Gold, Nasdaq and bitcoin keep their existing tables.
+- Overnight swaps, % of the price a night (triple on Wednesday nights): metals and oil 0.025 buys / 0.008 sells (the existing gold estimate); Nasdaq and S&P 500 0.020 / 0.005; currency pairs 0.010 either way; bitcoin 0.050 either way *(weak evidence: crypto CFD swaps are high and vary)*. Check each in MT5 (Market Watch → Specification) before trading.
+- Hours: gold's (01:10–23:50 server time, Monday–Friday) for every market *(choice: one schedule; daily candles barely notice)*.
+
+**Runs.** Period `portfolio`: one job per market, 2015–2024 in one piece (trades last weeks), cycle 60 minutes, warm-up 330 days so the 200-day average is ready on 1 Jan 2015. Settings `V1_STRATEGY=ea;V1_EA=trend-50d;V1_MAX_LOTS=10`, test account R1,000,000, so v1's equal-percentage risk sizes every market without the 0.01-lot minimum or the lot cap deciding trades. A `control` run (random prices, every market) checks the new market code shows no edge.
+
+**Judged on all ten markets together: all six must hold.**
+
+| | Rule | Why |
+|---|---|---|
+| Q1 | At least 300 trades in total | About 3–8 trades a market a year are expected |
+| Q2 | Mean R > 0 after costs and swaps, with t ≥ 2.5 | Many variants have been tried; the bar stays high |
+| Q3 | Beats ≥ 95% of random-entry runs with the same exits and swaps | The breakouts must add something over random timing and direction |
+| Q4 | Positive in at least 60% of the years with 20+ trades | Trend-following has flat years, but most must pay |
+| Q5 | Still positive with costs and swaps raised by 50% | CFD swaps and spreads may be worse than modelled |
+| Q6 | Positive mean in at least half the markets with 20+ trades | One market (say gold's 2024 run) mustn't carry the rest |
+
+The t in Q2 treats trades as independent, which overstates it when markets move together (the four currency pairs all hold the dollar). Q6 and Q4 are the guard against that. **Final (2025–Oct 2026)** runs once, only if development passes: at least 80 trades, mean > 0 with t ≥ 2, beats 95% of random entries. A pass is a reason for three months on demo, not for real money.
