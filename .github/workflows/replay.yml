@@ -64,7 +64,13 @@ jobs:
             development) echo 'parts=["2015","2016","2017","2018","2019","2020","2021","2022","2023","2024"]' >> "$GITHUB_OUTPUT" ;;
             decade)      echo 'parts=["2015-2024"]' >> "$GITHUB_OUTPUT" ;;
             portfolio-control) echo 'parts=["gold:2019-2020","xag:2019-2020","wti:2019-2020","nas:2019-2020","spx:2019-2020","btc:2019-2020","eur:2019-2020","gbp:2019-2020","jpy:2019-2020","aud:2019-2020"]' >> "$GITHUB_OUTPUT" ;;
-            portfolio)   echo 'parts=["gold:2015-2024","xag:2015-2024","wti:2015-2024","nas:2015-2024","spx:2015-2024","btc:2015-2024","eur:2015-2024","gbp:2015-2024","jpy:2015-2024","aud:2015-2024"]' >> "$GITHUB_OUTPUT" ;;
+            portfolio)
+              # PORTFOLIO_MARKETS=wti+eur in settings re-runs only those markets
+              # (e.g. after a failed price download); judge them together with
+              # the main run through reuse_run / reuse_run_2. Added 2026-10-31.
+              PM=$(echo "${{ inputs.settings }}" | grep -o 'PORTFOLIO_MARKETS=[a-z+]*' | cut -d= -f2)
+              [ -n "$PM" ] || PM="gold+xag+wti+nas+spx+btc+eur+gbp+jpy+aud"
+              echo "parts=$(echo "$PM" | tr '+' '\n' | sed 's/.*/"&:2015-2024"/' | paste -sd, | sed 's/^/[/;s/$/]/')" >> "$GITHUB_OUTPUT" ;;
             final)       echo 'parts=["2025","2026"]' >> "$GITHUB_OUTPUT" ;;
             control)     echo 'parts=["2019","2023"]' >> "$GITHUB_OUTPUT" ;;
             data)        echo 'parts=["2015","2016","2017","2018","2019","2020","2021","2022","2023","2024","2025","2026"]' >> "$GITHUB_OUTPUT" ;;
