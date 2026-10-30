@@ -66,6 +66,12 @@ To test a **variant**, put its settings in the *settings* box, e.g. `TRAIL_ATR_M
 - For both `V1_ENTRY` rules, D6 (higher scores do better) is meaningless, because the score no longer picks trades; judge them on D1–D5 and say so.
 - Each runs as a screen first. A screen pass runs rest, and a development pass runs final, as before.
 
+**Written 30 Oct 2026, after the five screens above (v1-signal, cost-5pct, vol-floor, sweep-mss, asian-bench), before running these:**
+- What those screens showed: v1's entries point the right way by about +0.09R an hour after entry (t 1.63), about the median cost (0.08R), and the edge is gone by two hours (−0.01R), while trades are held up to 8 hours. The ICT core alone (sweep-mss) has no edge (+0.02R), skipping quiet markets and the 5% cost cap didn't help, and buying the Asian-range breakout lost −0.345R a trade (beat 0.1% of random entries).
+- **One-hour time limit, `V1_MAX_HOLD_HOURS=1`** (was 8): closes each trade where the entries' edge peaked. Screen first, development rules as for every v1 variant. Expected at best about break-even, since that edge is about the size of the cost.
+- **Fading the Asian breakout, `V1_ENTRY=asian_fade`:** the asian_breakout rule traded the other way. It was found on 2020–2024, so those years don't count for it: it runs on **rest (2015–2019) only**. It passes there if: at least 80 trades, mean R > 0 after costs with t ≥ 2, and it beats 95% of random-entry runs. A pass earns a full test on other years and markets, not live money. The breakout rule had only 122 trades in five years (the cost check refused 979 entry attempts), so this is a long shot for a thin sample.
+- **ICT 2022 on 5-minute candles on Nasdaq and DAX:** two of the twelve runs already written under "Nasdaq, DAX and bitcoin" above, unchanged (development, `V1_STRATEGY=ict2022;V1_ICT_TF=5m;V1_MAX_LOTS=0.02`, cycle 3). Run now because the gold run (+0.068R, beat 98.8% of random entries, 440 trades) was the closest of every test so far. Judged by I1–I5; a pass counts only for its own market.
+
 ## What the replay does not model
 
 - News: only US payrolls (first Friday, 08:30 New York) are known to the replay, so it may take a few trades the live bot would skip around CPI or FOMC.

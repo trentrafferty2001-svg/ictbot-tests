@@ -5371,7 +5371,7 @@ function v1Settings() {
         ictTf: String(sv.v1IctTf || process.env.V1_ICT_TF || '5m').trim().toLowerCase() === '15m' ? '15m' : '5m',  // see ICT
         setupTf: String(sv.v1SetupTf || process.env.V1_SETUP_TF || '15m').trim().toLowerCase() === '1h' ? '1h' : '15m',  // see v1AnalysisFrames
         volFloor: _v1Num(sv.v1VolFloor, 'V1_VOL_FLOOR', 0),            // 0 = off; see v1EntryFilters
-        entry: (e => ['sweep_mss', 'asian_breakout'].indexOf(e) !== -1 ? e : 'ict')(String(sv.v1Entry || process.env.V1_ENTRY || 'ict').trim().toLowerCase()),  // see v1AltSignal
+        entry: (e => ['sweep_mss', 'asian_breakout', 'asian_fade'].indexOf(e) !== -1 ? e : 'ict')(String(sv.v1Entry || process.env.V1_ENTRY || 'ict').trim().toLowerCase()),  // see v1AltSignal
         maxHoldHours: _v1Num(sv.v1MaxHoldHours, 'V1_MAX_HOLD_HOURS', 8),
         flattenBeforeBreak: _v1Bool(sv.flattenBeforeBreak, 'FLATTEN_BEFORE_BREAK', true),
         serverTrail: _v1Bool(sv.serverTrail, 'SERVER_TRAIL', true),
@@ -6474,6 +6474,11 @@ async function v1DailyAtrRank(cfg) {
 //   of the 15-minute candles from 19:00 to 03:00 New York time. From 03:00 to
 //   06:00 New York (London's morning), the first completed candle to close
 //   above the range buys, below it sells. At most one trade per candle.
+// - asian_fade: the same breakout, traded the other way (a close above the
+//   range sells, below it buys). Added 2026-10-30 after asian_breakout lost
+//   -0.345R a trade on 2020-2024 (beat 0.1% of random entries): London's
+//   first breakouts looked like false moves. Found on those years, so it is
+//   judged only on 2015-2019 (see RULES.md).
 // The quality gate, the score bar and the conflict-flag skip belong to the
 // ICT score, so they don't apply; D6 (higher scores do better) means nothing
 // for these rules.
@@ -6487,24 +6492,29 @@ function v1AltSignal(entry, analysis, m15, atr) {
         if (!(depth > 0)) return { signal: 'none', note: 'sweep_mss: no liquidity sweep the same way' };
         return { signal: isBuy ? 'buy' : 'sell', note: '🎯 sweep_mss: ' + mss.dir + ' ' + mss.type + ' after a ' + depth.toFixed(2) + '× ATR sweep' };
     }
-    if (entry === 'asian_breakout') {
-        if (!Array.isArray(m15) || m15.length < 40) return { signal: 'none', note: 'asian_breakout: not enough candles' };
-        const tOf = c => new Date(c.time).getTime();
-        const last = m15[m15.length - 2], prev = m15[m15.length - 3];   // the last one is still forming
-        const ny = v1NyParts(tOf(last));   // the candle's start, New York time
-        if (ny.mod < 3 * 60 || ny.mod >= 6 * 60) return { signal: 'none', note: 'asian_breakout: outside 03:00-06:00 New York' };
-        const open = tOf(last) - (ny.mod - 3 * 60) * 60000, start = open - 8 * 3600000;   // 03:00 and 19:00 New York
-        const range = m15.filter(c => { const t = tOf(c); return t >= start && t < open; });
-        if (range.length < 16) return { signal: 'none', note: 'asian_breakout: Asian range incomplete (' + range.length + ' candles)' };
-        const hi = Math.max(...range.map(c => c.high)), lo = Math.min(...range.map(c => c.low));
-        const inside = c => c.close <= hi && c.close >= lo;
-        if (tOf(last) === _v1AltBar) return { signal: 'none', note: 'asian_breakout: this candle was already used' };
-        const firstOut = tOf(prev) < open || inside(prev);
-        if (last.close > hi && firstOut) { _v1AltBar = tOf(last); return { signal: 'buy', note: '🌏 asian_breakout: close ' + last.close + ' above the Asian high ' + hi }; }
-        if (last.close < lo && firstOut) { _v1AltBar = tOf(last); return { signal: 'sell', note: '🌏 asian_breakout: close ' + last.close + ' below the Asian low ' + lo }; }
-        return { signal: 'none', note: 'asian_breakout: no new close outside ' + lo + '-' + hi };
+    if (entry === 'asian_breakout' || entry === 'asian_fade') {
+        const out = v1AsianBreak(m15);
+        if (entry === 'asian_fade' && out.signal !== 'none') return { signal: out.signal === 'buy' ? 'sell' : 'buy', note: out.note.replace('asian_breakout', 'asian_fade (traded the other way)') };
+        return out;
     }
     return { signal: analysis.signal, note: null };
+}
+function v1AsianBreak(m15) {
+    if (!Array.isArray(m15) || m15.length < 40) return { signal: 'none', note: 'asian_breakout: not enough candles' };
+    const tOf = c => new Date(c.time).getTime();
+    const last = m15[m15.length - 2], prev = m15[m15.length - 3];   // the last one is still forming
+    const ny = v1NyParts(tOf(last));   // the candle's start, New York time
+    if (ny.mod < 3 * 60 || ny.mod >= 6 * 60) return { signal: 'none', note: 'asian_breakout: outside 03:00-06:00 New York' };
+    const open = tOf(last) - (ny.mod - 3 * 60) * 60000, start = open - 8 * 3600000;   // 03:00 and 19:00 New York
+    const range = m15.filter(c => { const t = tOf(c); return t >= start && t < open; });
+    if (range.length < 16) return { signal: 'none', note: 'asian_breakout: Asian range incomplete (' + range.length + ' candles)' };
+    const hi = Math.max(...range.map(c => c.high)), lo = Math.min(...range.map(c => c.low));
+    const inside = c => c.close <= hi && c.close >= lo;
+    if (tOf(last) === _v1AltBar) return { signal: 'none', note: 'asian_breakout: this candle was already used' };
+    const firstOut = tOf(prev) < open || inside(prev);
+    if (last.close > hi && firstOut) { _v1AltBar = tOf(last); return { signal: 'buy', note: '🌏 asian_breakout: close ' + last.close + ' above the Asian high ' + hi }; }
+    if (last.close < lo && firstOut) { _v1AltBar = tOf(last); return { signal: 'sell', note: '🌏 asian_breakout: close ' + last.close + ' below the Asian low ' + lo }; }
+    return { signal: 'none', note: 'asian_breakout: no new close outside ' + lo + '-' + hi };
 }
 
 // ─── Two-leg exits and the stop ladder ──────────────────────────────────────
