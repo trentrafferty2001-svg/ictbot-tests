@@ -13,3 +13,4 @@ Every replay run, in order. The number of rows is the number of tries — the mo
 | 2026-10-24 | screen | setup-1h | `{"V1_SETUP_TF":"1h"}` | 1328 | -0.056 | -1.84 | 50.4% | SCREEN FAIL |
 | 2026-10-30 | screen | cost-cap-5pct | `{"COST_MAX_FRAC":"0.05"}` | 269 | -0.062 | -1.07 | 39.0% | TOO FEW TRADES |
 | 2026-10-30 | screen | v1-signal-study | `{}` | 1554 | -0.046 | -1.66 | 81.0% | SCREEN FAIL |
+| 2026-10-30 | screen | vol-floor-0.33 | `{"V1_VOL_FLOOR":"0.33"}` | 1123 | -0.067 | -2.07 | 46.3% | SCREEN FAIL |
