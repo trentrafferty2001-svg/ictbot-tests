@@ -17,3 +17,4 @@ Every replay run, in order. The number of rows is the number of tries — the mo
 | 2026-10-30 | control | ea-trend-4h parity (local) | `{"V1_STRATEGY":"ea","V1_EA":"trend-4h"}` | 43 | +0.127 | 0.61 | 69.0% | PASS |
 | 2026-10-30 | development | ict2022-5m | `{"V1_STRATEGY":"ict2022","V1_ICT_TF":"5m","V1_MAX_LOTS":"0.02"}` | 440 | +0.068 | 1.43 | 98.8% | FAIL |
 | 2026-10-30 | development | ict2022-15m | `{"V1_STRATEGY":"ict2022","V1_ICT_TF":"15m","V1_MAX_LOTS":"0.02"}` | 389 | -0.033 | -0.69 | 60.9% | FAIL |
+| 2026-10-30 | control | ote-control | `{"V1_STRATEGY":"ote","V1_MAX_LOTS":"0.02"}` | 298 | -0.055 | -0.74 | 38.9% | PASS |
