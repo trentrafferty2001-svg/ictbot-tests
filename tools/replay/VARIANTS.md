@@ -42,3 +42,4 @@ Every replay run, in order. The number of rows is the number of tries — the mo
 | 2026-10-30 | decade | turtle-55d-nas | `{"V1_STRATEGY":"ea","V1_EA":"turtle-55d","V1_MAX_LOTS":"0.02"}` | 46 | -0.111 | -0.51 | 10.9% | TOO FEW TRADES |
 | 2026-10-30 | screen | cost-5pct | `{"COST_MAX_FRAC":"0.05"}` | 269 | -0.062 | -1.07 | 39.0% | TOO FEW TRADES |
 | 2026-10-30 | screen | vol-floor | `{"V1_VOL_FLOOR":"0.33"}` | 1123 | -0.067 | -2.07 | 46.3% | SCREEN FAIL |
+| 2026-10-30 | screen | v1-signal | `{}` | 1554 | -0.046 | -1.66 | 81.0% | SCREEN FAIL |
