@@ -11,7 +11,9 @@ const fs = require('fs');
 const path = require('path');
 const argv = process.argv.slice(2), arg = (k, d) => { const i = argv.indexOf('--' + k); return i === -1 ? d : argv[i + 1]; };
 const dir = path.resolve(arg('dir', 'results'));
-const period = arg('period', 'development');
+const periodArg = arg('period', 'development');
+// portfolio = the trend portfolio's development run (2015-2024, ten markets); portfolio-control = its random-price check (2026-10-30)
+const period = periodArg === 'portfolio-control' ? 'control' : periodArg;
 const label = arg('label', 'v1');
 // Trend mode (V1_STRATEGY=trend) has its own rules: see RULES.md.
 let minTrades = period === 'screen' ? 500 : period === 'rest' ? 250 : 1000;
@@ -32,7 +34,7 @@ if (isIct) minTrades = period === 'screen' || period === 'rest' ? 150 : 300;
 // EA strategies (V1_STRATEGY=ea, src/ea/strategies), rules E1-E5. Added 2026-10-30.
 const isEa = runs.some(r => String(((r.settings || {}).env || {}).V1_STRATEGY || '').toLowerCase() === 'ea');
 const eaId = isEa ? String(((runs[0].settings || {}).env || {}).V1_EA || '') : '';
-if (isEa) minTrades = eaId === 'turtle-55d' ? 100 : period === 'screen' || period === 'rest' ? 150 : 300;
+if (isEa) minTrades = eaId === 'trend-50d' ? 300 : eaId === 'turtle-55d' ? 100 : period === 'screen' || period === 'rest' ? 150 : 300;
 
 const mean = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : NaN;
 const sd = a => { if (a.length < 2) return NaN; const m = mean(a); return Math.sqrt(a.reduce((x, y) => x + (y - m) * (y - m), 0) / (a.length - 1)); };
@@ -90,7 +92,19 @@ if (period === 'final' && (isTrend || isIct || isIctPlus || isEa)) {
   add('C2', 'random-entry percentile not extreme (5–95)', !(pct > 95 || pct < 5));
 } else if (isEa) {
   // an EA strategy's rules (RULES.md, "EA strategies", written before any run)
-  if (eaId === 'turtle-55d') {
+  if (eaId === 'trend-50d') {
+    // Daily trend portfolio, judged on all ten markets together (RULES.md,
+    // "Daily trend portfolio", written 30 Oct 2026 before any run).
+    const jq = yearRows.filter(r => r.n >= 20);
+    const mk = {}; for (const r of runs) { const k = (r.settings || {}).market || 'gold'; (mk[k] = mk[k] || []).push(...r.trades.filter(x => typeof x.r === 'number').map(x => x.r)); }
+    const mq = Object.values(mk).filter(a => a.length >= 20);
+    add('Q1', 'at least 300 trades (all markets)', n >= 300);
+    add('Q2', 'mean R > 0 after costs and swaps with t ≥ 2.5', m > 0 && t >= 2.5);
+    add('Q3', 'beats ≥ 95% of random-entry runs (same exits)', pct >= 95);
+    add('Q4', 'positive in ≥ 60% of years (years with ≥ 20 trades)', jq.length > 0 && jq.filter(r => r.m > 0).length / jq.length >= 0.6);
+    add('Q5', 'still positive with costs and swaps × 1.5', m15 > 0);
+    add('Q6', 'positive mean in ≥ half the markets with ≥ 20 trades', mq.length > 0 && mq.filter(a => mean(a) > 0).length / mq.length >= 0.5);
+  } else if (eaId === 'turtle-55d') {
     // Turtle System 2, judged on all its markets' results together (put every
     // market's results in one --dir). RULES.md, written before any run.
     const jp = yearRows.filter(r => r.n >= 10);
@@ -162,6 +176,11 @@ L.push('| Random entries (same exits, ' + K + ' runs) | mean ' + f2(randMean) + 
 L.push('| Exit-model check | correlation with the replayed trades ' + (corrs.length ? mean(corrs).toFixed(2) : '—') + ' (should be > 0.8) |', '');
 L.push('## Rules', '');
 for (const r of rules) L.push('- ' + (r.ok ? '✅' : '❌') + ' ' + r.id + ': ' + r.text);
+if (runs.length > 1 && runs.some(r => (r.settings || {}).market)) {
+  const mk = {}; for (const r of runs) { const k = (r.settings || {}).market || 'gold'; (mk[k] = mk[k] || []).push(...r.trades.filter(x => typeof x.r === 'number').map(x => x.r)); }
+  L.push('', '## By market', '', '| Market | Trades | Mean R | t | Winners |', '|---|---|---|---|---|');
+  for (const k of Object.keys(mk).sort()) { const a = mk[k]; L.push('| ' + k + ' | ' + a.length + ' | ' + f2(mean(a)) + ' | ' + (Number.isFinite(tstat(a)) ? tstat(a).toFixed(2) : '—') + ' | ' + (a.length ? (a.filter(x => x > 0).length / a.length * 100).toFixed(0) + '%' : '—') + ' |'); }
+}
 L.push('', '## By year', '', '| Year | Trades | Mean R | t |', '|---|---|---|---|');
 for (const r of yearRows) L.push('| ' + r.y + ' | ' + r.n + ' | ' + f2(r.m) + ' | ' + (Number.isFinite(r.t) ? r.t.toFixed(2) : '—') + ' |');
 L.push('', '## By score', '', '| Score | Trades | Mean R |', '|---|---|---|');

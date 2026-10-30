@@ -1,0 +1,26 @@
+{
+  "id": "trend-50d",
+  "name": "Daily trend portfolio: 50-day breakout with a 200-day filter",
+  "source": "Andreas Clenow, 'Following the Trend' (2013), core system (breakout in the direction of a long average, ATR stops); exits as the Turtle traders' (20-day opposite extreme). Evidence for the family: Hurst, Ooi and Pedersen, 'A Century of Evidence on Trend-Following Investing', AQR, 2017.",
+  "notes": "Written 30 Oct 2026 before any run (tools/replay/RULES.md, 'Daily trend portfolio'). Choices: Clenow filters with 50/100-day averages and trails 3 ATR; this uses a 200-day simple average, a 2 x ATR(20) initial stop and the 20-day opposite extreme as the trail, fixed now. The breakout is a daily CLOSE beyond the 50 days before the last finished candle. One position per market, held overnight; swaps charged. Meant to run on ten markets at once.",
+  "timeframe": "1d",
+  "indicators": {
+    "sma200": "SMA(close, 200)",
+    "hh50": "HIGHEST(high, 50)",
+    "ll50": "LOWEST(low, 50)",
+    "hh20": "HIGHEST(high, 20)",
+    "ll20": "LOWEST(low, 20)",
+    "atr20": "ATR(20)"
+  },
+  "buy": {
+    "when": "close > sma200 and close > hh50[2]",
+    "stop": "entry - 2 * atr20",
+    "trail": "ll20"
+  },
+  "sell": {
+    "when": "close < sma200 and close < ll50[2]",
+    "stop": "entry + 2 * atr20",
+    "trail": "hh20"
+  },
+  "options": { "maxOpen": 1, "holdOvernight": true }
+}

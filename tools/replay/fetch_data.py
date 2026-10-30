@@ -42,6 +42,14 @@ INSTRUMENTS = {
     'nsxusd': {'duka': 'USATECHIDXUSD', 'hd': 'nsxusd', 'px': (1000, 40000), 'tzcheck': True},   # Nasdaq 100
     'grxeur': {'duka': 'DEUIDXEUR', 'hd': 'grxeur', 'px': (4000, 40000), 'tzcheck': False},      # DAX
     'btcusd': {'duka': 'BTCUSD', 'hd': None, 'px': (100, 400000), 'tzcheck': False},             # Bitcoin (HistData has none)
+    # Daily trend portfolio (2026-10-30)
+    'xagusd': {'duka': 'XAGUSD', 'hd': 'xagusd', 'px': (5, 150), 'tzcheck': False},              # silver
+    'wtiusd': {'duka': 'LIGHTCMDUSD', 'hd': 'wtiusd', 'px': (5, 200), 'tzcheck': False},         # US (WTI) oil
+    'spxusd': {'duka': 'USA500IDXUSD', 'hd': 'spxusd', 'px': (500, 12000), 'tzcheck': False},    # S&P 500
+    'eurusd': {'duka': 'EURUSD', 'hd': 'eurusd', 'px': (0.8, 1.8), 'tzcheck': False},
+    'gbpusd': {'duka': 'GBPUSD', 'hd': 'gbpusd', 'px': (1.0, 2.3), 'tzcheck': False},
+    'usdjpy': {'duka': 'USDJPY', 'hd': 'usdjpy', 'px': (60, 200), 'tzcheck': False},
+    'audusd': {'duka': 'AUDUSD', 'hd': 'audusd', 'px': (0.4, 1.2), 'tzcheck': False},
 }
 INST = INSTRUMENTS['xauusd']
 

@@ -65,9 +65,23 @@ const MKT = ({
   gold: { sym: 'XAUUSD', contract: 100, synth: 2000, fx: 1, brokerOpen: 65, brokerClose: 23 * 60 + 55, botOpen: 70, botClose: 23 * 60 + 50 },
   nas: { sym: 'US100Cash#', contract: 1, synth: 15000, fx: 1, brokerOpen: 65, brokerClose: 23 * 60 + 55, botOpen: 70, botClose: 23 * 60 + 50 },
   ger: { sym: 'GER40Cash#', contract: 1, synth: 16000, fx: 1.1, brokerOpen: 2 * 60 + 15, brokerClose: 23 * 60, botOpen: 2 * 60 + 15, botClose: 23 * 60 },
-  btc: { sym: 'BTCUSD#', contract: 1, synth: 40000, fx: 1, brokerOpen: 65, brokerClose: 23 * 60 + 55, botOpen: 70, botClose: 23 * 60 + 50 },
+  btc: { sym: 'BTCUSD#', contract: 1, synth: 40000, fx: 1, brokerOpen: 65, brokerClose: 23 * 60 + 55, botOpen: 70, botClose: 23 * 60 + 50, swap: [0.05, 0.05] },
+  // Daily trend portfolio markets (2026-10-30; tools/replay/RULES.md, written
+  // before any run). Gold's hours for all. spread = London/New York-hours
+  // spread in price units (×1.4 outside them); swap = [buys, sells], % of the
+  // price a night. fx = account units per price unit relative to USD (USDJPY
+  // fixed at 1/130: only lot rounding depends on it, never R).
+  xag: { sym: 'XAGUSD', contract: 5000, synth: 25, fx: 1, digits: 3, spread: 0.03, swap: [0.025, 0.008] },
+  wti: { sym: 'OILCash#', contract: 100, synth: 70, fx: 1, digits: 2, spread: 0.04, swap: [0.025, 0.008] },
+  spx: { sym: 'US500Cash#', contract: 1, synth: 4000, fx: 1, digits: 2, spread: 0.6, swap: [0.020, 0.005] },
+  eur: { sym: 'EURUSD', contract: 100000, synth: 1.1, fx: 1, digits: 5, spread: 0.00010, swap: [0.010, 0.010] },
+  gbp: { sym: 'GBPUSD', contract: 100000, synth: 1.3, fx: 1, digits: 5, spread: 0.00015, swap: [0.010, 0.010] },
+  jpy: { sym: 'USDJPY', contract: 100000, synth: 130, fx: 1 / 130, digits: 3, spread: 0.012, swap: [0.010, 0.010] },
+  aud: { sym: 'AUDUSD', contract: 100000, synth: 0.7, fx: 1, digits: 5, spread: 0.00012, swap: [0.010, 0.010] },
 })[MARKET];
-if (!MKT) throw new Error('unknown --market ' + MARKET + ' (gold, nas, ger, btc)');
+if (MKT && MKT.brokerOpen === undefined) Object.assign(MKT, { brokerOpen: 65, brokerClose: 23 * 60 + 55, botOpen: 70, botClose: 23 * 60 + 50 });
+const DIG = (MKT && MKT.digits) || 2, PT = Math.pow(10, -DIG), RND = x => +(+x).toFixed(DIG);
+if (!MKT) throw new Error('unknown --market ' + MARKET + ' (gold, nas, ger, btc, xag, wti, spx, eur, gbp, jpy, aud)');
 const SYM = MKT.sym;
 const t0Real = Date.now();
 
@@ -116,6 +130,7 @@ function spreadAt(ms) {
     const ny = (s.mod - 420 + 1440) % 1440;   // New York minute of the day (XM server time is always New York + 7h)
     if (MARKET === 'nas') sp = ny >= 570 && ny < 960 ? 1.5 : ny >= 180 && ny < 1020 ? 2.5 : 3.5;
     else if (MARKET === 'ger') sp = ny >= 180 && ny < 690 ? 1.8 : ny >= 135 && ny < 960 ? 3.5 : 6;
+    else if (MKT.spread) sp = MKT.spread * (ny >= 180 && ny < 1020 ? 1 : 1.4);   // London/New York hours, else ×1.4
     else sp = 60;
     if (s.mod >= MKT.brokerClose - 30 || s.mod < MKT.brokerOpen + 30) sp *= 2.5;
     if (s.wd === 1 && s.mod < MKT.brokerOpen + 60) sp *= 1.5;
@@ -125,7 +140,7 @@ function spreadAt(ms) {
     if (s.mod >= 23 * 60 + 25 || s.mod < 95) sp = 0.60;
     if (s.wd === 1 && s.mod < 125) sp = 0.80;
   }
-  return Math.round(sp * SPREAD_MULT * 100) / 100;
+  return RND(Math.round(sp * SPREAD_MULT / PT) * PT);
 }
 
 // ── data ────────────────────────────────────────────────────────────────────
@@ -139,7 +154,7 @@ function loadBars() {
       if (!xmOpen(t)) continue;
       const h = new Date(t).getUTCHours(), m = (h >= 7 && h < 17) ? 1.25 : (h >= 22 || h < 6) ? 0.6 : 0.9, sig = 0.00018 * p * m;
       const o = p, c = o + sig * g(), hh = Math.max(o, c) + Math.abs(g()) * sig * 0.5, ll = Math.min(o, c) - Math.abs(g()) * sig * 0.5;
-      out.push([t, +o.toFixed(2), +hh.toFixed(2), +ll.toFixed(2), +c.toFixed(2), 100 + Math.round(rnd() * 400)]); p = c;
+      out.push([t, RND(o), RND(hh), RND(ll), RND(c), 100 + Math.round(rnd() * 400)]); p = c;
     }
     return out;
   }
@@ -186,7 +201,7 @@ class DataMarket {
     const idx = this.idxAt(now);
     if (idx < 0) return [];
     const mk = (bs, b) => ({ symbol: SYM, timeframe: tf, time: new Date(bs).toISOString(), brokerTime: new Date(bs + srvOff(bs)).toISOString().replace('T', ' ').slice(0, 23),
-      open: b.open, high: +b.high.toFixed(2), low: +b.low.toFixed(2), close: b.close, tickVolume: Math.max(1, Math.round(b.vol)), spread: Math.round(spreadAt(now) * 100), volume: 0 });
+      open: b.open, high: RND(b.high), low: RND(b.low), close: b.close, tickVolume: Math.max(1, Math.round(b.vol)), spread: Math.round(spreadAt(now) / PT), volume: 0 });
     if (tf === '1m') { const out = []; for (let i = Math.max(0, idx - limit + 1); i <= idx; i++) out.push(mk(this.t[i], { open: this.o[i], high: this.h[i], low: this.l[i], close: this.c[i], vol: this.v[i] })); return out; }
     const T = this.tf[tf]; if (!T) return [];
     // bucket holding bar idx
@@ -218,7 +233,7 @@ class DataMarket {
 const FWD_MIN = [15, 30, 60, 120];
 function forwardMoves(mk, ts, dir, risk) {
   if (!(ts > 0) || !dir || !(risk > 0)) return null;
-  const last = mk.t[mk.n - 1], out = { risk: +risk.toFixed(2) };
+  const last = mk.t[mk.n - 1], out = { risk: +risk.toPrecision(6) };
   const move = (a, h) => (a + h * 60000 <= last && mk.idxAt(a) >= 0) ? mk.bid(a + h * 60000) - mk.bid(a) : null;
   for (const h of FWD_MIN) {
     const own = move(ts, h);
@@ -273,13 +288,13 @@ const CONTRACT = MKT.contract, PX_RATE = RATE * MKT.fx;   // account units per u
 // all charged buys $58–96 a lot a night) and 0.008% for sells. Check XM's own
 // in MT5 (Market Watch → Specification). v1's ICT trades are flat before every
 // rollover, so they never pay it; trend trades do. 2026-10-24.
-const SWAP_LONG = parseFloat(arg('swap-long', '0.025')) / 100, SWAP_SHORT = parseFloat(arg('swap-short', '0.008')) / 100;
+const SWAP_LONG = parseFloat(arg('swap-long', String((MKT.swap || [0.025])[0]))) / 100, SWAP_SHORT = parseFloat(arg('swap-short', String((MKT.swap || [0, 0.008])[1]))) / 100;
 const srvDay = t => Math.floor((t + srvOff(t)) / 86400000);
 const swapNights = d => [0, 1, 1, 3, 1, 1, 0][new Date(d * 86400000).getUTCDay()];
 class Broker {
   constructor(mk) { this.mk = mk; this.balance = BALANCE; this.positions = []; this.closed = []; this.deals = {}; this.nextId = 1000; this.last = VNOW; this.lastDay = srvDay(VNOW); this.rejects = 0; this.requests = 0; this.serverMoves = 0; this.telegram = 0; this.orders = []; this.fills = 0; }
   bid() { return this.mk.bid(VNOW); }
-  ask() { return +(this.bid() + spreadAt(VNOW)).toFixed(2); }
+  ask() { return RND(this.bid() + spreadAt(VNOW)); }
   view(p) { const cur = p.type === 'POSITION_TYPE_BUY' ? this.bid() : this.ask(), pr = (p.type === 'POSITION_TYPE_BUY' ? cur - p.openPrice : p.openPrice - cur) * p.volume * CONTRACT * PX_RATE;
     return { id: p.id, positionId: p.id, type: p.type, symbol: SYM, openPrice: p.openPrice, volume: p.volume, stopLoss: p.stopLoss, takeProfit: p.takeProfit, comment: p.comment, time: new Date(p.openTime).toISOString(), updateTime: new Date(p.openTime).toISOString(), currentPrice: cur, profit: +pr.toFixed(2), unrealizedProfit: +(pr + (p.swap || 0)).toFixed(2), swap: +(p.swap || 0).toFixed(2), commission: 0 }; }
   account() { let u = 0; for (const p of this.positions) u += this.view(p).profit; return { platform: 'mt5', type: 'ACCOUNT_TRADE_MODE_DEMO', currency: CURRENCY, balance: +this.balance.toFixed(2), equity: +(this.balance + u).toFixed(2), margin: 0, freeMargin: +(this.balance + u).toFixed(2), leverage: 100, marginMode: 'ACCOUNT_MARGIN_MODE_RETAIL_HEDGING' }; }
@@ -305,7 +320,7 @@ class Broker {
         if (buy ? l + sp > od.openPrice : h < od.openPrice) continue;
         const px = buy ? Math.min(od.openPrice, o + sp) : Math.max(od.openPrice, o);
         this.orders = this.orders.filter(x => x !== od);
-        const p = this.open(buy ? 'POSITION_TYPE_BUY' : 'POSITION_TYPE_SELL', +px.toFixed(2), od.req, od.id, t);
+        const p = this.open(buy ? 'POSITION_TYPE_BUY' : 'POSITION_TYPE_SELL', RND(px), od.req, od.id, t);
         p.fillBar = i; this.fills++;
       }
       for (const p of this.positions.slice()) {
@@ -339,7 +354,7 @@ class Broker {
       case 'ORDER_TYPE_BUY': case 'ORDER_TYPE_SELL': {
         const buy = b.actionType === 'ORDER_TYPE_BUY';
         if (bad(buy, b.stopLoss, b.takeProfit)) return rej(10016, 'TRADE_RETCODE_INVALID_STOPS', 'Invalid stops');
-        const p = this.open(buy ? 'POSITION_TYPE_BUY' : 'POSITION_TYPE_SELL', +(buy ? ask + SLIPPAGE : bid - SLIPPAGE).toFixed(2), b);
+        const p = this.open(buy ? 'POSITION_TYPE_BUY' : 'POSITION_TYPE_SELL', RND(buy ? ask + SLIPPAGE : bid - SLIPPAGE), b);
         return ok({ orderId: p.id, positionId: p.id });
       }
       case 'POSITION_MODIFY': { const p = find(); if (!p) return rej(10036, 'TRADE_RETCODE_POSITION_CLOSED', 'Position not found');
@@ -394,8 +409,8 @@ function makeFetch(broker) {
     const p = m[1], q = new URLSearchParams((m[2] || '').slice(1));
     let mm;
     if ((mm = p.match(/^\/historical-market-data\/symbols\/([^/]+)\/timeframes\/([^/]+)\/candles$/))) return json(broker.mk.candles(mm[2], parseInt(q.get('limit') || '100', 10), VNOW));
-    if (/\/current-price$/.test(p)) { const tv = +(0.01 * CONTRACT * PX_RATE).toFixed(6); return json({ symbol: SYM, bid: broker.bid(), ask: broker.ask(), profitTickValue: tv, lossTickValue: tv, time: new Date(VNOW).toISOString(), brokerTime: new Date(VNOW + srvOff(VNOW)).toISOString().replace('T', ' ').slice(0, 23) }); }
-    if (/\/specification$/.test(p)) return json({ symbol: SYM, tickSize: 0.01, contractSize: CONTRACT, minVolume: 0.01, maxVolume: 100, volumeStep: 0.01, stopsLevel: 0, freezeLevel: 0, digits: 2 });
+    if (/\/current-price$/.test(p)) { const tv = +(PT * CONTRACT * PX_RATE).toFixed(8); return json({ symbol: SYM, bid: broker.bid(), ask: broker.ask(), profitTickValue: tv, lossTickValue: tv, time: new Date(VNOW).toISOString(), brokerTime: new Date(VNOW + srvOff(VNOW)).toISOString().replace('T', ' ').slice(0, 23) }); }
+    if (/\/specification$/.test(p)) return json({ symbol: SYM, tickSize: PT, contractSize: CONTRACT, minVolume: 0.01, maxVolume: 100, volumeStep: 0.01, stopsLevel: 0, freezeLevel: 0, digits: DIG });
     if (p === '/symbols') return json([SYM]);
     if (p === '/account-information') return json(broker.account());
     if (p === '/positions') return json(broker.positions.map(x => broker.view(x)));

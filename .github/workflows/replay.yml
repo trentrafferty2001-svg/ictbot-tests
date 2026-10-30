@@ -8,9 +8,9 @@ on:
   workflow_dispatch:
     inputs:
       period:
-        description: "decade = 2015-2024 in ONE job (daily strategies: trades can last months) · smoke = 1-month check · screen = 2020-2024 (half the minutes) · rest = 2015-2019 · development = 2015-2024 · final = 2025-26 (run ONCE, at the very end) · data = save 2015-2026 prices to the replay-data branch, no replay · control = random data"
+        description: "portfolio = decade on all ten trend-portfolio markets at once (with control: random prices for each) · decade = 2015-2024 in ONE job (daily strategies: trades can last months) · smoke = 1-month check · screen = 2020-2024 (half the minutes) · rest = 2015-2019 · development = 2015-2024 · final = 2025-26 (run ONCE, at the very end) · data = save 2015-2026 prices to the replay-data branch, no replay · control = random data"
         type: choice
-        options: [smoke, screen, rest, development, decade, final, control, data]
+        options: [smoke, screen, rest, development, decade, portfolio, portfolio-control, final, control, data]
         default: smoke
       label:
         description: "Name of this run in the variant log"
@@ -63,6 +63,8 @@ jobs:
             rest)        echo 'parts=["2015","2016","2017","2018","2019"]' >> "$GITHUB_OUTPUT" ;;
             development) echo 'parts=["2015","2016","2017","2018","2019","2020","2021","2022","2023","2024"]' >> "$GITHUB_OUTPUT" ;;
             decade)      echo 'parts=["2015-2024"]' >> "$GITHUB_OUTPUT" ;;
+            portfolio-control) echo 'parts=["gold:2019-2020","xag:2019-2020","wti:2019-2020","nas:2019-2020","spx:2019-2020","btc:2019-2020","eur:2019-2020","gbp:2019-2020","jpy:2019-2020","aud:2019-2020"]' >> "$GITHUB_OUTPUT" ;;
+            portfolio)   echo 'parts=["gold:2015-2024","xag:2015-2024","wti:2015-2024","nas:2015-2024","spx:2015-2024","btc:2015-2024","eur:2015-2024","gbp:2015-2024","jpy:2015-2024","aud:2015-2024"]' >> "$GITHUB_OUTPUT" ;;
             final)       echo 'parts=["2025","2026"]' >> "$GITHUB_OUTPUT" ;;
             control)     echo 'parts=["2019","2023"]' >> "$GITHUB_OUTPUT" ;;
             data)        echo 'parts=["2015","2016","2017","2018","2019","2020","2021","2022","2023","2024","2025","2026"]' >> "$GITHUB_OUTPUT" ;;
@@ -75,7 +77,7 @@ jobs:
     timeout-minutes: 300
     env:
       BOT_URL: ${{ secrets.BOT_URL }}
-      INST: ${{ fromJSON('{"gold":"xauusd","nas":"nsxusd","ger":"grxeur","btc":"btcusd"}')[inputs.market || 'gold'] }}
+      INSTMAP: '{"gold":"xauusd","nas":"nsxusd","ger":"grxeur","btc":"btcusd","xag":"xagusd","wti":"wtiusd","spx":"spxusd","eur":"eurusd","gbp":"gbpusd","jpy":"usdjpy","aud":"audusd"}'
     strategy:
       fail-fast: false
       max-parallel: 10
@@ -93,11 +95,19 @@ jobs:
         id: d
         run: |
           P="${{ matrix.part }}"
+          MK="${{ inputs.market || 'gold' }}"
+          W=130
+          # portfolio parts are "<market>:<years>" (2026-10-30): 330 days of
+          # history first, so a 200-day average is ready on the first day.
+          case "$P" in *:*) MK="${P%%:*}"; P="${P#*:}"; W=330 ;; esac
+          INST=$(echo "$INSTMAP" | python3 -c "import json,sys;print(json.load(sys.stdin)['$MK'])")
+          echo "INST=$INST" >> "$GITHUB_ENV"; echo "MK=$MK" >> "$GITHUB_ENV"; echo "P=$P" >> "$GITHUB_ENV"; echo "WARM=$W" >> "$GITHUB_ENV"
+          echo "tag=$( [ "$MK" = "${{ inputs.market || 'gold' }}" ] && [ "${{ matrix.part }}" = "$P" ] && echo "$P" || echo "$MK-$P")" >> "$GITHUB_OUTPUT"
           if [ "${#P}" = 9 ]; then
             A="${P%-*}"; B="${P#*-}"
             echo "from=$A-01-01" >> "$GITHUB_OUTPUT"
             echo "to=$((B+1))-01-01" >> "$GITHUB_OUTPUT"
-            echo "dfrom=$(date -u -d "$A-01-01 -130 days" +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+            echo "dfrom=$(date -u -d "$A-01-01 -$W days" +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
             echo "dto=$((B+1))-01-03" >> "$GITHUB_OUTPUT"
           elif [ "${#P}" = 7 ]; then
             echo "from=$P-01" >> "$GITHUB_OUTPUT"
@@ -111,16 +121,16 @@ jobs:
             echo "dto=$((P+1))-01-03" >> "$GITHUB_OUTPUT"
           fi
       - name: Cache price data
-        if: inputs.period != 'control'
+        if: inputs.period != 'control' && inputs.period != 'portfolio-control'
         uses: actions/cache@v4
         with:
-          path: tools/replay/data/${{ env.INST }}-${{ matrix.part }}.csv.gz
-          key: ${{ env.INST }}-m1-${{ matrix.part }}-v3
+          path: tools/replay/data/${{ env.INST }}-${{ env.P }}.csv.gz
+          key: ${{ env.INST }}-m1-${{ env.P }}-v3
       - name: Download price data (Dukascopy, or HistData if Dukascopy is blocked)
-        if: inputs.period != 'control'
-        run: python3 tools/replay/fetch_data.py --instrument "$INST" --from ${{ steps.d.outputs.dfrom }} --to ${{ steps.d.outputs.dto }} --name ${{ matrix.part }}
+        if: inputs.period != 'control' && inputs.period != 'portfolio-control'
+        run: python3 tools/replay/fetch_data.py --instrument "$INST" --from ${{ steps.d.outputs.dfrom }} --to ${{ steps.d.outputs.dto }} --name $P
       - name: Measured spreads from the live bot (optional secret BOT_URL; gold only)
-        if: env.BOT_URL != '' && (inputs.market || 'gold') == 'gold'
+        if: env.BOT_URL != '' && env.MK == 'gold'
         run: curl -fsS --max-time 30 "$BOT_URL/api/v1/spreads" -o tools/replay/spreads.json || rm -f tools/replay/spreads.json
       - name: Replay
         run: |
@@ -128,17 +138,19 @@ jobs:
           if [ -s tools/replay/spreads.json ]; then EXTRA="--spreads tools/replay/spreads.json"; fi
           if [ "${{ inputs.period }}" = "control" ]; then
             EXTRA="$EXTRA --synthetic --seed ${{ matrix.part }}"
+          elif [ "${{ inputs.period }}" = "portfolio-control" ]; then
+            EXTRA="$EXTRA --synthetic --seed 2019"
           else
-            EXTRA="$EXTRA --data tools/replay/data/$INST-${{ matrix.part }}.csv.gz"
+            EXTRA="$EXTRA --data tools/replay/data/$INST-$P.csv.gz"
           fi
           node tools/replay/replay.js --from ${{ steps.d.outputs.from }} --to ${{ steps.d.outputs.to }} \
-            --out results/${{ matrix.part }}.json --spread-mult "${{ inputs.spread_mult }}" --cycle "${{ inputs.cycle || 3 }}" \
-            --env "${{ inputs.settings }}" --label "${{ inputs.label }}" --market "${{ inputs.market || 'gold' }}" \
-            --warmup "${{ inputs.period == 'decade' && '120' || '70' }}" --balance "${{ inputs.balance || '90000' }}" $EXTRA
+            --out results/${{ steps.d.outputs.tag }}.json --spread-mult "${{ inputs.spread_mult }}" --cycle "${{ inputs.cycle || 3 }}" \
+            --env "${{ inputs.settings }}" --label "${{ inputs.label }}" --market "$MK" \
+            --warmup "${{ (inputs.period == 'decade' || inputs.period == 'portfolio' || inputs.period == 'portfolio-control') && '$WARM' || '70' }}" --balance "${{ inputs.balance || '90000' }}" $EXTRA
       - uses: actions/upload-artifact@v4
         with:
-          name: replay-${{ matrix.part }}
-          path: results/${{ matrix.part }}.json
+          name: replay-${{ steps.d.outputs.tag }}
+          path: results/${{ steps.d.outputs.tag }}.json
           retention-days: 30
 
   verdict:

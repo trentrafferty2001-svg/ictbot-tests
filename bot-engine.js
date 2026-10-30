@@ -1659,7 +1659,7 @@ function getCfg() { let s = global._botState || {}, sv = s.botConfig || {}; retu
 }; }
 
 // ─── SYMBOL CONFIG ─────────────────────────────────────────────────────────
-function getSymConfig(sym) { sym = sym || 'XAUUSD'; let isGold = sym === 'GOLD' || sym === 'GOLD#' || sym.indexOf('XAUUSD') === 0 || sym === 'XAUUSDpro', isBTC = /^(BTCUSD|BTCUSDT|ETHUSD)/i.test(sym), isNAS = /^(NAS100|US100|USTEC|NDX100)/i.test(sym), isGER = /^(GER40|GER30|DE40|DE30|DAX)/i.test(sym); /* XM: US100Cash, GER40Cash, BTCUSD (2026-10-30) */ if (isGold) return { type: 'gold', spreadLimit: 2.5, lotVal: 10, maxLot: 10, slBufs: { aggressive: 5, sniper: 35, normal: 10 }, atrThreshHigh: 8, atrThreshLow: 3, dxyRelevant: true, minSL: 0.5, limitSlip: 1.5, eqTol: .8, maxHoldH: ADVANCED_RISK_CONFIG.maxHoldHours || 36, voidMinSize: 1.5 }; if (isBTC) return { type: 'btc', spreadLimit: 15, lotVal: 1, maxLot: 1, slBufs: { aggressive: 150, sniper: 500, normal: 250 }, atrThreshHigh: 800, atrThreshLow: 200, dxyRelevant: false, minSL: 100, limitSlip: 5, eqTol: 50, maxHoldH: ADVANCED_RISK_CONFIG.maxHoldHours || 72, voidMinSize: 200 }; if (isGER) return { type: 'ger', spreadLimit: 10, lotVal: 1, maxLot: 5, slBufs: { aggressive: 40, sniper: 160, normal: 80 }, atrThreshHigh: 100, atrThreshLow: 30, dxyRelevant: false, minSL: 5, limitSlip: 1.5, eqTol: 5, maxHoldH: ADVANCED_RISK_CONFIG.maxHoldHours || 48, voidMinSize: 15 }; if (isNAS) return { type: 'nas', spreadLimit: 10, lotVal: 10, maxLot: 5, slBufs: { aggressive: 50, sniper: 200, normal: 100 }, atrThreshHigh: 120, atrThreshLow: 40, dxyRelevant: false, minSL: 5, limitSlip: 1.5, eqTol: 5, maxHoldH: ADVANCED_RISK_CONFIG.maxHoldHours || 48, voidMinSize: 20 }; return { type: 'forex', spreadLimit: .0015, lotVal: 10, maxLot: 10, slBufs: { aggressive: .0005, sniper: .002, normal: .001 }, atrThreshHigh: .005, atrThreshLow: .001, dxyRelevant: true, minSL: .003, limitSlip: .0002, eqTol: .0003, maxHoldH: ADVANCED_RISK_CONFIG.maxHoldHours || 48, voidMinSize: .001 }; }
+function getSymConfig(sym) { sym = sym || 'XAUUSD'; let isGold = sym === 'GOLD' || sym === 'GOLD#' || sym.indexOf('XAUUSD') === 0 || sym === 'XAUUSDpro', isBTC = /^(BTCUSD|BTCUSDT|ETHUSD)/i.test(sym), isNAS = /^(NAS100|US100|USTEC|NDX100)/i.test(sym), isGER = /^(GER40|GER30|DE40|DE30|DAX)/i.test(sym); /* XM: US100Cash, GER40Cash, BTCUSD (2026-10-30) */ if (isGold) return { type: 'gold', spreadLimit: 2.5, lotVal: 10, maxLot: 10, slBufs: { aggressive: 5, sniper: 35, normal: 10 }, atrThreshHigh: 8, atrThreshLow: 3, dxyRelevant: true, minSL: 0.5, limitSlip: 1.5, eqTol: .8, maxHoldH: ADVANCED_RISK_CONFIG.maxHoldHours || 36, voidMinSize: 1.5 }; if (isBTC) return { type: 'btc', spreadLimit: 15, lotVal: 1, maxLot: 1, slBufs: { aggressive: 150, sniper: 500, normal: 250 }, atrThreshHigh: 800, atrThreshLow: 200, dxyRelevant: false, minSL: 100, limitSlip: 5, eqTol: 50, maxHoldH: ADVANCED_RISK_CONFIG.maxHoldHours || 72, voidMinSize: 200 }; if (isGER) return { type: 'ger', spreadLimit: 10, lotVal: 1, maxLot: 5, slBufs: { aggressive: 40, sniper: 160, normal: 80 }, atrThreshHigh: 100, atrThreshLow: 30, dxyRelevant: false, minSL: 5, limitSlip: 1.5, eqTol: 5, maxHoldH: ADVANCED_RISK_CONFIG.maxHoldHours || 48, voidMinSize: 15 }; if (isNAS) return { type: 'nas', spreadLimit: 10, lotVal: 10, maxLot: 5, slBufs: { aggressive: 50, sniper: 200, normal: 100 }, atrThreshHigh: 120, atrThreshLow: 40, dxyRelevant: false, minSL: 5, limitSlip: 1.5, eqTol: 5, maxHoldH: ADVANCED_RISK_CONFIG.maxHoldHours || 48, voidMinSize: 20 }; /* Daily trend portfolio markets (2026-10-30, tools/replay/RULES.md): silver, US oil, S&P 500; currency pairs below. */ if (/^(XAGUSD|SILVER)/i.test(sym)) return { type: 'xag', digits: 3, spreadLimit: .2, lotVal: 50, maxLot: 10, slBufs: { aggressive: .05, sniper: .3, normal: .1 }, atrThreshHigh: .5, atrThreshLow: .1, dxyRelevant: true, minSL: .02, limitSlip: .03, eqTol: .02, maxHoldH: ADVANCED_RISK_CONFIG.maxHoldHours || 48, voidMinSize: .03 }; if (/^(OIL|USOIL|WTI|XTIUSD|CL-)/i.test(sym)) return { type: 'oil', digits: 2, spreadLimit: .3, lotVal: 1, maxLot: 10, slBufs: { aggressive: .1, sniper: .5, normal: .2 }, atrThreshHigh: 2, atrThreshLow: .3, dxyRelevant: false, minSL: .05, limitSlip: .05, eqTol: .05, maxHoldH: ADVANCED_RISK_CONFIG.maxHoldHours || 48, voidMinSize: .1 }; if (/^(US500|SPX|SP500|USA500)/i.test(sym)) return { type: 'spx', digits: 2, spreadLimit: 3, lotVal: 1, maxLot: 10, slBufs: { aggressive: 3, sniper: 15, normal: 6 }, atrThreshHigh: 40, atrThreshLow: 10, dxyRelevant: false, minSL: 1, limitSlip: .5, eqTol: 1, maxHoldH: ADVANCED_RISK_CONFIG.maxHoldHours || 48, voidMinSize: 2 }; if (/JPY/i.test(sym)) return { type: 'forex', digits: 3, spreadLimit: .15, lotVal: 10, maxLot: 10, slBufs: { aggressive: .05, sniper: .2, normal: .1 }, atrThreshHigh: .5, atrThreshLow: .1, dxyRelevant: true, minSL: .3, limitSlip: .02, eqTol: .03, maxHoldH: ADVANCED_RISK_CONFIG.maxHoldHours || 48, voidMinSize: .1 }; return { type: 'forex', digits: 5, spreadLimit: .0015, lotVal: 10, maxLot: 10, slBufs: { aggressive: .0005, sniper: .002, normal: .001 }, atrThreshHigh: .005, atrThreshLow: .001, dxyRelevant: true, minSL: .003, limitSlip: .0002, eqTol: .0003, maxHoldH: ADVANCED_RISK_CONFIG.maxHoldHours || 48, voidMinSize: .001 }; }
 
 function getModeParams(cfg) { let sc = getSymConfig(cfg.symbol); switch (cfg.mode) {
     case 'aggressive': return { slBuf: sc.slBufs.aggressive, rr: 1.5, minScore: 2, riskMult: .5, kzRequired: false, useLimit: false, confirmCandle: false, useM5: false };
@@ -3980,10 +3980,11 @@ function stopGapFromPrice(cfg, spec) {
     let sc = getSymConfig(cfg.symbol);
     let minDist = Math.max((spec && spec.stopsLevelPrice) || 0, (spec && spec.freezeLevelPrice) || 0, (spec && spec.tickSize) || 0.01, sc.minSL || 0.01);
     if (sc.type === 'gold') minDist = Math.max(minDist, 0.5);
+    if (!V1_LEGACY_MARKETS[sc.type]) return Math.max(minDist * 0.5, Math.pow(10, -(Number.isFinite(sc.digits) ? sc.digits : 2)) * 3);   // 2026-10-30: currency pairs, silver, oil, S&P 500
     return Math.max(minDist * 0.5, 0.3);
 }
 function stopIsReachable(isBuy, sl, price, gap) { return isBuy ? sl < price - gap : sl > price + gap; }
-function stopImproves(isBuy, newSL, curSL) { return !curSL ? true : (isBuy ? newSL > curSL + 0.005 : newSL < curSL - 0.005); }
+function stopImproves(isBuy, newSL, curSL) { const e = v1IsLegacyMarket() ? 0.005 : Math.pow(10, -v1Digits()) / 2; return !curSL ? true : (isBuy ? newSL > curSL + e : newSL < curSL - e); }
 
 async function managePositions(cfg, positions, curPIn, atr, session, marketRegime, volatility, regime, quote) {
     let fresh;
@@ -4161,7 +4162,7 @@ async function managePositions(cfg, positions, curPIn, atr, session, marketRegim
                 if (!(newSL > 0)) return 'failed';
                 if (!stopImproves(isBuy, newSL, curSL)) return 'not_better';
                 if (!stopIsReachable(isBuy, newSL, curP, stopGap)) return 'not_yet';
-                const body = { actionType: 'POSITION_MODIFY', positionId: pos.id, stopLoss: parseFloat(newSL.toFixed(2)), takeProfit: curTP };
+                const body = { actionType: 'POSITION_MODIFY', positionId: pos.id, stopLoss: v1Round(newSL), takeProfit: curTP };
                 // Re-send the server-side ladder with every change so a modify
                 // can never leave the position without it.
                 if (posState._serverTrail && ladder.length) body.trailingStopLoss = { threshold: { thresholds: ladder, units: 'ABSOLUTE_PRICE' } };
@@ -4222,7 +4223,7 @@ async function managePositions(cfg, positions, curPIn, atr, session, marketRegim
                 }
                 if (c && R.trail) {
                     const lvl = S.trail(c.ctx, c.k, eaDir, entry, risk0, ex);
-                    if (typeof lvl === 'number' && lvl > 0) await v1Move(parseFloat(lvl.toFixed(2)), 'ea trail');
+                    if (typeof lvl === 'number' && lvl > 0) await v1Move(v1Round(lvl), 'ea trail');
                 }
                 continue;
             }
@@ -5359,7 +5360,7 @@ function v1Settings() {
         openRiskCap: _v1Num(sv.openRiskCap, 'OPEN_RISK_CAP', 1.5),
         dailyStopR: _v1Num(sv.dailyStopR, 'DAILY_STOP_R', 3),
         costMaxFrac: _v1Num(sv.costMaxFrac, 'COST_MAX_FRAC', 0.10),
-        slippage: _v1Num(sv.costSlippage, 'COST_SLIPPAGE', ({ nas: 0.5, ger: 0.5, btc: 10 })[v1MarketType()] || 0.10),  // price units: $0.10 gold, 0.5 index points, $10 BTC
+        slippage: _v1Num(sv.costSlippage, 'COST_SLIPPAGE', (v1MarketType() === 'forex' ? Math.pow(10, -v1Digits()) * 2 : ({ nas: 0.5, ger: 0.5, btc: 10, xag: 0.01, oil: 0.02, spx: 0.3 })[v1MarketType()]) || 0.10),  // price units: $0.10 gold, 0.5 index points, $10 BTC
         commissionPerLot: _v1Num(sv.commissionPerLot, 'COMMISSION_PER_LOT', 0),
         beTrigger: String(sv.beTrigger || process.env.BE_TRIGGER || 'tp1').trim().toLowerCase() === '0.5r' ? '0.5r' : 'tp1',
         trailAtr: _v1Num(sv.trailAtr, 'TRAIL_ATR_MULT', 1.0),
@@ -5449,6 +5450,13 @@ const V1_BREAK_START = 23 * 60 + 50, V1_BREAK_END = 70;
 // BTCUSD trades on weekends at some brokers; the bot doesn't (a choice:
 // ICT's sessions are weekday ones, and it keeps one schedule).
 function v1MarketType(sym) { try { return getSymConfig(sym || ((global._botState || {}).botConfig || {}).symbol || process.env.BOT_SYMBOL || 'XAUUSD').type; } catch (e) { return 'gold'; } }
+// Prices for markets quoted to more or fewer than 2 decimals (currency pairs,
+// silver): round to the market's own digits. Gold, the indices and bitcoin
+// keep their 2 decimals (2026-10-30).
+function v1Digits(sym) { try { const c = getSymConfig(sym || ((global._botState || {}).botConfig || {}).symbol || process.env.BOT_SYMBOL || 'XAUUSD'); return Number.isFinite(c.digits) ? c.digits : 2; } catch (e) { return 2; } }
+function v1Round(x, sym) { return parseFloat((+x).toFixed(v1Digits(sym))); }
+const V1_LEGACY_MARKETS = { gold: 1, nas: 1, ger: 1, btc: 1 };
+function v1IsLegacyMarket(sym) { return !!V1_LEGACY_MARKETS[v1MarketType(sym)]; }
 function v1Hours(sym) { return v1MarketType(sym) === 'ger' ? { open: 2 * 60 + 15, close: 23 * 60 } : { open: V1_BREAK_END, close: V1_BREAK_START }; }
 function v1MarketState(ms) {
     const s = v1ServerParts(ms), hrs = v1Hours();
@@ -5895,8 +5903,8 @@ async function v1EaPlace(cfg, V1, S, c, sig, o) {
     if (!lv.ok) return { ok: false, blocked: true, error: lv.why };
     // The strategy's own stop and target, used as they are: never moved to
     // fit a ceiling. Too close for the broker = no trade.
-    const minDist = Math.max((spec && spec.stopsLevelPrice) || 0, (spec && spec.freezeLevelPrice) || 0, ((spec && spec.tickSize) || 0.01) * 3, 0.5);
-    const sl = parseFloat(lv.stop.toFixed(2)), tp = lv.target ? parseFloat(lv.target.toFixed(2)) : 0;
+    const minDist = Math.max((spec && spec.stopsLevelPrice) || 0, (spec && spec.freezeLevelPrice) || 0, ((spec && spec.tickSize) || 0.01) * 3, v1IsLegacyMarket() ? 0.5 : 0);
+    const sl = v1Round(lv.stop), tp = lv.target ? v1Round(lv.target) : 0;
     if (Math.abs(entry - sl) < minDist) return { ok: false, blocked: true, error: 'stop only ' + Math.abs(entry - sl).toFixed(2) + ' from entry (broker minimum ' + minDist.toFixed(2) + ')' };
     if (tp && Math.abs(tp - entry) < minDist) return { ok: false, blocked: true, error: 'target only ' + Math.abs(tp - entry).toFixed(2) + ' from entry (broker minimum ' + minDist.toFixed(2) + ')' };
     const slD = Math.abs(entry - sl), acct = global._v1Account || {};
