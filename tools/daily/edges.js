@@ -24,11 +24,15 @@ const TEST = args.test;
 const PERIOD = args.period || 'development';
 const LABEL = args.label || TEST;
 const PERIODS = {
-  development: ['2015-01-01', '2025-01-01'],
-  final: ['2025-01-01', '2026-11-01'],
-  control: ['2015-01-01', '2025-01-01'],
+  development: [['2015-01-01', '2025-01-01']],
+  final: [['2025-01-01', '2026-11-01']],
+  control: [['2015-01-01', '2025-01-01']],
+  // Confirmation on data no rule here was judged on: before and after development (added 31 Oct 2026).
+  oos: [['2010-01-01', '2015-01-01'], ['2025-01-01', '2026-11-01']],
 };
-const [FROM, TO] = PERIODS[PERIOD];
+const RANGES = PERIODS[PERIOD];
+const FROM = RANGES[0][0], TO = RANGES[RANGES.length - 1][1];
+const inRange = day => RANGES.some(([a, b]) => day >= a && day < b);
 const CONTROL = PERIOD === 'control';
 
 // ---------- markets ----------
@@ -43,6 +47,7 @@ const TESTS = {
   'ibs-nas': { kind: 'mr', rule: 'ibs', markets: ['nas'] },
   'ibs-ger': { kind: 'mr', rule: 'ibs', markets: ['ger'] },
   rsi2: { kind: 'mr', rule: 'rsi2', markets: ['nas', 'ger'] },
+  'rsi2-nas': { kind: 'mr', rule: 'rsi2', markets: ['nas'] },
   'gold-asia-long': { kind: 'session', dir: 1, start: 19 * 60 + 15, end: 3 * 60, cross: true, markets: ['gold'] },
   'gold-us-short': { kind: 'session', dir: -1, start: 8 * 60 + 20, end: 13 * 60 + 30, cross: false, markets: ['gold'] },
 };
@@ -182,7 +187,7 @@ function runMR(rule, mk, days, cm) {
       }
       continue;
     }
-    if (d.day < FROM || d.day >= TO) continue;
+    if (!inRange(d.day)) continue;
     const go = rule === 'ibs' ? d.ibs < 0.2 : d.sma200 != null && d.rsi2 != null && d.c > d.sma200 && d.rsi2 < 5;
     if (go) pos = i;
   }
@@ -200,7 +205,7 @@ function runSession(D, t, cm) {
     if (t.cross ? !(L.wd >= 0 && L.wd <= 4) : !(L.wd >= 1 && L.wd <= 5)) continue;
     seen.add(L.day);
     const exitDay = t.cross ? addDays(L.day, 1) : L.day;
-    if (exitDay < FROM || exitDay >= TO) continue;
+    if (!inRange(exitDay)) continue;
     const xi = firstAtOrAfter(D, nyToUtc(exitDay, t.end));
     if (xi >= D.t.length) continue;
     const XL = dayOf(D.t[xi]);
@@ -286,7 +291,7 @@ for (const t of trades) {
 const ordered = [...trades].sort((a, b) => (keyDay(a) < keyDay(b) ? -1 : 1));
 let eq = 1, peak = 1, mdd = 0;
 for (const t of ordered) { eq *= 1 + t.ret; peak = Math.max(peak, eq); mdd = Math.max(mdd, 1 - eq / peak); }
-const years = (Date.parse(TO) - Date.parse(FROM)) / (365.25 * 86400000);
+const years = RANGES.reduce((a, [x, y]) => a + (Date.parse(y) - Date.parse(x)) / (365.25 * 86400000), 0);
 const cagr = Math.pow(Math.max(eq, 1e-9), 1 / years) - 1;
 const yearRows = [...byYear].sort().map(([y, a]) => ({ y, n: a.length, ret: a.reduce((s, x) => (1 + s) * (1 + x) - 1, 0), t: tstat(a) }));
 const months = [...byMonth.values()];
@@ -322,6 +327,14 @@ if (PERIOD === 'development' && T.kind === 'mr') {
     ['G6', 'positive in ≥ 55% of months', posMonths >= 0.55],
   ];
   verdict = S.trades < 300 ? 'TOO FEW TRADES' : rules.every(x => x[2]) ? 'PASS' : 'FAIL';
+} else if (PERIOD === 'oos') {
+  const minT = TEST === 'ibs-nas' ? 60 : 25;
+  rules = [
+    ['O1', `at least ${minT} trades`, S.trades >= minT],
+    ['O2', 'mean return a trade > 0 after costs and swaps, t ≥ 2', S.mean > 0 && S.t >= 2],
+    ['O3', 'beats ≥ 95% of random long entries', pct >= 0.95],
+  ];
+  verdict = rules.every(x => x[2]) ? 'PASS' : 'FAIL';
 } else if (PERIOD === 'final') {
   const minT = T.kind === 'mr' ? 30 : 200;
   rules = [
@@ -347,7 +360,7 @@ const unit = T.kind === 'mr' ? 'trade' : 'day';
 const md = [
   `# Daily edges — ${LABEL} (${PERIOD}) · ${Object.keys(perMarket).join(' + ')}`,
   '',
-  `**${verdict}** · ${FROM} → ${TO} · ${CONTROL ? 'random-walk prices, before costs' : 'real 1-minute prices, XM-style costs'}`,
+  `**${verdict}** · ${RANGES.map(([a, b]) => a + ' → ' + b).join(' and ')} · ${CONTROL ? 'random-walk prices, before costs' : 'real 1-minute prices, XM-style costs'}`,
   '',
   '| | |', '|---|---|',
   `| Trades | ${S.trades} · winners ${P(S.win)} · average hold ${S.holdAvg.toFixed(1)} ${T.kind === 'mr' ? 'sessions' : 'hours'} |`,

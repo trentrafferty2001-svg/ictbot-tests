@@ -12,7 +12,7 @@ on:
       period:
         description: "development = 2015-2024 (the test) · final = 2025-Oct 2026 (ONCE, only for tests that passed development)"
         type: choice
-        options: [development, final]
+        options: [development, final, oos]
         default: development
       tests:
         description: "Space-separated tests: ibs-nas ibs-ger rsi2 gold-asia-long gold-us-short"
@@ -30,6 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       years: ${{ steps.p.outputs.years }}
+      insts: ${{ steps.p.outputs.insts }}
       period: ${{ steps.p.outputs.period }}
       tests: ${{ steps.p.outputs.tests }}
     steps:
@@ -42,8 +43,11 @@ jobs:
           case "$PERIOD" in
             development) Y='["2014","2015","2016","2017","2018","2019","2020","2021","2022","2023","2024"]' ;;
             final)       Y='["2024","2025","2026"]' ;;
+            oos)         Y='["2009","2010","2011","2012","2013","2014","2024","2025","2026"]' ;;
           esac
-          echo "years=$Y" >> "$GITHUB_OUTPUT"
+          I='["nsxusd","grxeur","xauusd"]'
+          [ "$PERIOD" = "oos" ] && I='["nsxusd"]'
+          echo "years=$Y" >> "$GITHUB_OUTPUT"; echo "insts=$I" >> "$GITHUB_OUTPUT"
 
   prices:
     needs: plan
@@ -53,7 +57,7 @@ jobs:
       fail-fast: false
       max-parallel: 12
       matrix:
-        inst: [nsxusd, grxeur, xauusd]
+        inst: ${{ fromJSON(needs.plan.outputs.insts) }}
         year: ${{ fromJSON(needs.plan.outputs.years) }}
     steps:
       - uses: actions/checkout@v4

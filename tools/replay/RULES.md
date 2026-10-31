@@ -347,3 +347,11 @@ Win rate, average win and loss, profit factor, worst drawdown and return at 1× 
 **Final (2025–Oct 2026)** runs once, only for a test that passed development: at least 30 trades for an index test or 200 for a gold test, mean > 0 after costs with t ≥ 1.5, and beats ≥ 90% of its random benchmark.
 
 **Counting the tries.** Five more rows. With the thresholds above the chance that at least one passes by luck is roughly 1 in 20; a pass is a reason for its final test, then demo trading, not live money.
+
+### Written 31 Oct 2026, after the five development runs above and before this one: Nasdaq mean reversion on data it has not been judged on (`oos`)
+
+- **What development showed.** IBS on Nasdaq made +0.207% a trade after costs and swaps over 354 trades, won 57.9%, beat 99.2% of random entries and was positive in 8 of 10 years, but its t of 2.25 missed M2's 2.5, so it failed. RSI(2) had too few trades (83); its Nasdaq line made +0.68% a trade over 51 trades (t 2.89, 78% winners) and its DAX line +0.23% over 32 (t 0.61). IBS on the DAX lost even before costs. Both gold legs lost.
+- **So two Nasdaq rules are promising, not proven, and Nasdaq-only RSI(2) was picked after seeing the per-market lines.** The honest check is data neither has been judged on: Nasdaq before 2015 (2010–2014, or as far back as HistData goes) and after 2024 (January 2025 to October 2026). The 2025–26 period was reserved for tests that passed development; using it here for two that didn't is decided now, before looking, and it is then used up.
+- **Tests:** `ibs-nas` and `rsi2-nas` (RSI(2) on Nasdaq alone), with the development rules and costs unchanged. Period `oos`: entries in 2010–2014 and in 2025–Oct 2026, judged together.
+- **Pass, for each:** O1 at least 60 trades (IBS) or 25 (RSI(2)); O2 mean > 0 after costs and swaps with t ≥ 2; O3 beats ≥ 95% of random long entries (same year, same holding time, same costs).
+- **What a pass earns:** forward testing on the demo account, unchanged, for at least 3 months and 30 trades before any real money. **A fail:** the rule is dropped. If HistData has no Nasdaq data before 2015, the 2025–26 part is judged alone, with O1 halved.
