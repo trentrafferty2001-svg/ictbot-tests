@@ -38,4 +38,4 @@
 | 2025 | 4 | -2.5% | -0.28 |
 | 2026 | 3 | 5.1% | 6.21 |
 
-Costs: spread at the decision minute (Nasdaq 1.5, DAX 1.8 points) + 0.5 points slippage a round trip, and 0.025% of price a night held (long swap). Prices are bid; buys pay the spread.
+Costs: spread at the decision minute (US500Cash# 0.6 + 0.2 slippage points a round trip) and 0.025% of price a night held (long swap). Prices are bid; buys pay the spread. (Footer corrected after the run: the run used these S&P costs, but the old footer text named Nasdaq's.)

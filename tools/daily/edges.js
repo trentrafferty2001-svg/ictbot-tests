@@ -393,7 +393,7 @@ const md = [
   ...yearRows.map(y => `| ${y.y} | ${y.n} | ${P(y.ret)} | ${y.t.toFixed(2)} |`),
   '',
   T.kind === 'mr'
-    ? 'Costs: spread at the decision minute (Nasdaq 1.5, DAX 1.8 points) + 0.5 points slippage a round trip, and 0.025% of price a night held (long swap). Prices are bid; buys pay the spread.'
+    ? `Costs: spread at the decision minute (${T.markets.map(m => `${MK[m].name} ${MK[m].spread} + ${MK[m].slip} slippage`).join('; ')} points a round trip) and 0.025% of price a night held (long swap). Prices are bid; buys pay the spread.`
     : 'Costs: the replay\'s XM gold spread at the minute the spread is paid (buys pay it on entry, sells on exit) + $0.10 slippage. No swap: every trade opens and closes inside one XM day.',
 ].join('\n');
 fs.writeFileSync(args.md || 'verdict.md', md + '\n');
