@@ -299,3 +299,7 @@ Each market's own result is reported but not required to pass. **Final (2025–O
 | Q6 | Positive mean in at least half the markets with 20+ trades | One market (say gold's 2024 run) mustn't carry the rest |
 
 The t in Q2 treats trades as independent, which overstates it when markets move together (the four currency pairs all hold the dollar). Q6 and Q4 are the guard against that. **Final (2025–Oct 2026)** runs once, only if development passes: at least 80 trades, mean > 0 with t ≥ 2, beats 95% of random entries. A pass is a reason for three months on demo, not for real money.
+
+**Written 31 Oct 2026 01:25 UTC, before reading any development result:**
+- **Oil is left out.** Its price download failed twice (Dukascopy timed out, then answered HTTP 503; HistData has no `wtiusd` file for 2024). The portfolio is judged on the other **nine** markets, with Q1–Q6 unchanged. This was decided because of missing data, not results: no development verdict had been read.
+- **The random-price control is a partial pass.** The first control was invalid (one shared seed made ten copies of one path). The second, with a seed per market, passes C1 (t = 0.66 on 73 trades), but its random-entry test didn't run (silver made no trades, so no market's random runs could be pooled) and its exit-model check read 0.76, under 0.8. So C2 is untested, not passed. Bitcoin lost 0.90R a trade on random prices: its swap estimate (0.050% a night both ways) costs about 0.3R a trade on its own.
