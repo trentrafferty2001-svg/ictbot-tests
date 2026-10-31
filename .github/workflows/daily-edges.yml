@@ -38,15 +38,18 @@ jobs:
       - id: p
         run: |
           PERIOD="${{ inputs.period }}"; TESTS="${{ inputs.tests }}"
-          if [ -z "$PERIOD" ]; then PERIOD=$(sed -n 1p tools/daily/RUN | tr -d '[:space:]'); TESTS=$(sed -n 2p tools/daily/RUN); fi
+          INSTS=""
+          if [ -z "$PERIOD" ]; then PERIOD=$(sed -n 1p tools/daily/RUN | tr -d '[:space:]'); TESTS=$(sed -n 2p tools/daily/RUN); INSTS=$(sed -n 3p tools/daily/RUN | tr -d '[:space:]'); fi
           echo "period=$PERIOD" >> "$GITHUB_OUTPUT"; echo "tests=$TESTS" >> "$GITHUB_OUTPUT"
           case "$PERIOD" in
             development) Y='["2014","2015","2016","2017","2018","2019","2020","2021","2022","2023","2024"]' ;;
             final)       Y='["2024","2025","2026"]' ;;
             oos)         Y='["2009","2010","2011","2012","2013","2014","2024","2025","2026"]' ;;
+            all)         Y='["2010","2011","2012","2013","2014","2015","2016","2017","2018","2019","2020","2021","2022","2023","2024","2025","2026"]' ;;
           esac
           I='["nsxusd","grxeur","xauusd"]'
           [ "$PERIOD" = "oos" ] && I='["nsxusd"]'
+          [ -n "$INSTS" ] && I="$INSTS"
           echo "years=$Y" >> "$GITHUB_OUTPUT"; echo "insts=$I" >> "$GITHUB_OUTPUT"
 
   prices:
@@ -98,19 +101,22 @@ jobs:
       - name: Data check
         run: ls -la px
       - name: Controls (random prices, before costs)
-        if: needs.plan.outputs.period == 'development'
+        if: needs.plan.outputs.period == 'development' || needs.plan.outputs.period == 'all'
         run: |
-          for T in ${{ needs.plan.outputs.tests }}; do
+          for TP in ${{ needs.plan.outputs.tests }}; do
+            T="${TP%%:*}"
             node tools/daily/edges.js --test "$T" --period control --seed 1 --label "$T-control" --md "control-$T.md"
             cat "control-$T.md" >> "$GITHUB_STEP_SUMMARY"
           done
       - name: Verdicts
         run: |
           mkdir -p out
-          for T in ${{ needs.plan.outputs.tests }}; do
-            node tools/daily/edges.js --test "$T" --period "${{ needs.plan.outputs.period }}" --data px --label "$T" \
-              --md "out/$T.md" --out "out/$T.json" --log tools/replay/VARIANTS.md
-            cat "out/$T.md" >> "$GITHUB_STEP_SUMMARY"
+          for TP in ${{ needs.plan.outputs.tests }}; do
+            T="${TP%%:*}"; PER="${{ needs.plan.outputs.period }}"
+            [ "$TP" != "$T" ] && PER="${TP#*:}"
+            node tools/daily/edges.js --test "$T" --period "$PER" --data px --label "$T" \
+              --md "out/$T-$PER.md" --out "out/$T-$PER.json" --log tools/replay/VARIANTS.md
+            cat "out/$T-$PER.md" >> "$GITHUB_STEP_SUMMARY"
           done
       - name: Save verdicts and the run log
         run: |
@@ -123,8 +129,8 @@ jobs:
               mkdir -p verdicts
               for F in out/*.md; do
                 B=$(basename "$F" .md)
-                cp "$F" "verdicts/edges-$B-${{ needs.plan.outputs.period }}-${{ github.run_id }}.md"
-                gzip -c "out/$B.json" > "verdicts/edges-$B-${{ needs.plan.outputs.period }}-${{ github.run_id }}.json.gz"
+                cp "$F" "verdicts/edges-$B-${{ github.run_id }}.md"
+                gzip -c "out/$B.json" > "verdicts/edges-$B-${{ github.run_id }}.json.gz"
               done
               git add tools/replay/VARIANTS.md verdicts
               git commit -q -m "Verdicts: daily edges (${{ needs.plan.outputs.period }}) [skip ci] [skip render]" || exit 0

@@ -29,6 +29,8 @@ const PERIODS = {
   control: [['2015-01-01', '2025-01-01']],
   // Confirmation on data no rule here was judged on: before and after development (added 31 Oct 2026).
   oos: [['2010-01-01', '2015-01-01'], ['2025-01-01', '2026-11-01']],
+  // Every year the data has, judged once (added 31 Oct 2026, for rules that fire too rarely to split).
+  all: [['2010-01-01', '2026-11-01']],
 };
 const RANGES = PERIODS[PERIOD];
 const FROM = RANGES[0][0], TO = RANGES[RANGES.length - 1][1];
@@ -41,6 +43,8 @@ const CONTROL = PERIOD === 'control';
 const MK = {
   nas: { name: 'US100Cash#', inst: 'nsxusd', tz: 'ny', open: 9 * 60 + 30, sig: 15 * 60 + 55, spread: 1.5, slip: 0.5, swap: 0.00025, synth: 5000 },
   ger: { name: 'GER40Cash#', inst: 'grxeur', tz: 'fra', open: 9 * 60, sig: 17 * 60 + 25, spread: 1.8, slip: 0.5, swap: 0.00025, synth: 10000 },
+  // S&P 500 (added 31 Oct 2026): XM's published average spread 0.6 points, slippage 0.2 points (same share of price as Nasdaq's 0.5).
+  spx: { name: 'US500Cash#', inst: 'spxusd', tz: 'ny', open: 9 * 60 + 30, sig: 15 * 60 + 55, spread: 0.6, slip: 0.2, swap: 0.00025, synth: 2000 },
   gold: { name: 'GOLD (XAUUSD)', inst: 'xauusd', slip: 0.10, synth: 1200 },
 };
 const TESTS = {
@@ -48,6 +52,8 @@ const TESTS = {
   'ibs-ger': { kind: 'mr', rule: 'ibs', markets: ['ger'] },
   rsi2: { kind: 'mr', rule: 'rsi2', markets: ['nas', 'ger'] },
   'rsi2-nas': { kind: 'mr', rule: 'rsi2', markets: ['nas'] },
+  'ibs-spx': { kind: 'mr', rule: 'ibs', markets: ['spx'] },
+  'rsi2-spx': { kind: 'mr', rule: 'rsi2', markets: ['spx'] },
   'gold-asia-long': { kind: 'session', dir: 1, start: 19 * 60 + 15, end: 3 * 60, cross: true, markets: ['gold'] },
   'gold-us-short': { kind: 'session', dir: -1, start: 8 * 60 + 20, end: 13 * 60 + 30, cross: false, markets: ['gold'] },
 };
@@ -115,7 +121,7 @@ function synthetic(inst) {
   const rnd = () => ((s = (s * 1664525 + 1013904223) % 4294967296) / 4294967296);
   const g = () => Math.sqrt(-2 * Math.log(rnd() + 1e-12)) * Math.cos(2 * Math.PI * rnd());
   const D = { t: [], o: [], h: [], l: [], c: [] };
-  let p = MK[inst === 'xauusd' ? 'gold' : inst === 'nsxusd' ? 'nas' : 'ger'].synth;
+  let p = MK[Object.keys(MK).find(k => MK[k].inst === inst)].synth;
   for (let t = Date.UTC(2013, 9, 15); t < Date.UTC(2025, 0, 6); t += 60000) {
     const wd = new Date(t).getUTCDay();
     if (wd === 6 || (wd === 0 && new Date(t).getUTCHours() < 22) || (wd === 5 && new Date(t).getUTCHours() >= 21)) continue;
@@ -327,6 +333,13 @@ if (PERIOD === 'development' && T.kind === 'mr') {
     ['G6', 'positive in ≥ 55% of months', posMonths >= 0.55],
   ];
   verdict = S.trades < 300 ? 'TOO FEW TRADES' : rules.every(x => x[2]) ? 'PASS' : 'FAIL';
+} else if (PERIOD === 'all') {
+  rules = [
+    ['A1', 'at least 60 trades', S.trades >= 60],
+    ['A2', 'mean return a trade > 0 after costs and swaps, t ≥ 2', S.mean > 0 && S.t >= 2],
+    ['A3', 'beats ≥ 95% of random long entries', pct >= 0.95],
+  ];
+  verdict = S.trades < 60 ? 'TOO FEW TRADES' : rules.every(x => x[2]) ? 'PASS' : 'FAIL';
 } else if (PERIOD === 'oos') {
   const minT = TEST === 'ibs-nas' ? 60 : 25;
   rules = [

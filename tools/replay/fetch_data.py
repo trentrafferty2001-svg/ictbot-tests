@@ -42,6 +42,7 @@ INSTRUMENTS = {
     'nsxusd': {'duka': 'USATECHIDXUSD', 'hd': 'nsxusd', 'px': (1000, 40000), 'tzcheck': True},   # Nasdaq 100
     'grxeur': {'duka': 'DEUIDXEUR', 'hd': 'grxeur', 'px': (4000, 40000), 'tzcheck': False},      # DAX
     'btcusd': {'duka': 'BTCUSD', 'hd': None, 'px': (100, 400000), 'tzcheck': False},             # Bitcoin (HistData has none)
+    'spxusd': {'duka': 'USA500IDXUSD', 'hd': 'spxusd', 'px': (500, 12000), 'tzcheck': False},    # S&P 500 (added 2026-10-31, as on trend-portfolio)
 }
 INST = INSTRUMENTS['xauusd']
 

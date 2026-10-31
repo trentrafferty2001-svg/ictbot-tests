@@ -1,2 +1,3 @@
-oos
-ibs-nas rsi2-nas
+all
+ibs-spx:development rsi2-spx:all
+["spxusd"]

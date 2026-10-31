@@ -355,3 +355,11 @@ Win rate, average win and loss, profit factor, worst drawdown and return at 1× 
 - **Tests:** `ibs-nas` and `rsi2-nas` (RSI(2) on Nasdaq alone), with the development rules and costs unchanged. Period `oos`: entries in 2010–2014 and in 2025–Oct 2026, judged together.
 - **Pass, for each:** O1 at least 60 trades (IBS) or 25 (RSI(2)); O2 mean > 0 after costs and swaps with t ≥ 2; O3 beats ≥ 95% of random long entries (same year, same holding time, same costs).
 - **What a pass earns:** forward testing on the demo account, unchanged, for at least 3 months and 30 trades before any real money. **A fail:** the rule is dropped. If HistData has no Nasdaq data before 2015, the 2025–26 part is judged alone, with O1 halved.
+
+### Written 31 Oct 2026, before running them: the Nasdaq dip rules on the S&P 500 (`ibs-spx`, `rsi2-spx`)
+
+- **Why.** Trent asked whether the Nasdaq IBS result is broad or a fluke, and for more trades. He also asked for the Dow, but no free 1-minute Dow data reaches GitHub's runners (HistData has none, and Dukascopy blocks them), so the Dow is not tested.
+- **`ibs-spx`:** the IBS rule exactly as `ibs-nas`, on the S&P 500's cash session (09:30–15:55 New York). Costs: XM's published average `US500Cash` spread of 0.6 points, slippage 0.2 points (about the same share of price as Nasdaq's 0.5), and the same 0.025% a night swap as every index test here, so the results compare. Judged on development (2015–2024) by M1–M5. A pass then runs `oos` (2010–2014 and 2025–Oct 2026) by O1–O3, as Nasdaq did.
+- **`rsi2-spx`:** RSI(2) exactly as `rsi2`, on the S&P 500 alone. It fires too rarely to split, so it is judged once on every year the data has (period `all`, entries from 2010, or once 200 days of history exist, to October 2026): A1 at least 60 trades; A2 mean > 0 after costs and swaps with t ≥ 2; A3 beats ≥ 95% of random long entries. Context read before writing this: Backtrex found 71% winners but only +1.7% a year for this rule on the S&P 500 in 2016–2026.
+- **Caution, written now:** the S&P 500 and Nasdaq-100 move closely together, so a pass on the S&P supports the Nasdaq result without proving it independently, and a bot trading both would often hold both at once.
+- Two more rows in the variant log.
