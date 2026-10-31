@@ -363,3 +363,10 @@ Win rate, average win and loss, profit factor, worst drawdown and return at 1× 
 - **`rsi2-spx`:** RSI(2) exactly as `rsi2`, on the S&P 500 alone. It fires too rarely to split, so it is judged once on every year the data has (period `all`, entries from 2010, or once 200 days of history exist, to October 2026): A1 at least 60 trades; A2 mean > 0 after costs and swaps with t ≥ 2; A3 beats ≥ 95% of random long entries. Context read before writing this: Backtrex found 71% winners but only +1.7% a year for this rule on the S&P 500 in 2016–2026.
 - **Caution, written now:** the S&P 500 and Nasdaq-100 move closely together, so a pass on the S&P supports the Nasdaq result without proving it independently, and a bot trading both would often hold both at once.
 - Two more rows in the variant log.
+
+### Written 31 Oct 2026, before running it: is Nasdaq IBS robust to its settings? (`ibs-nas-grid`)
+
+- **Why.** Nasdaq IBS made about +0.2% a trade in both samples, but at one setting: buy below an IBS of 0.20, hold until the first close at or above it. If only that exact setting works, the result is probably luck. If nearby settings also work, the effect is more likely real. This is a diagnostic, not a new strategy: nothing here will be picked for trading.
+- **Grid:** IBS thresholds 0.10, 0.15, 0.20, 0.25 and 0.30, each with two exits: the first close with IBS at or above the threshold (as tested), or simply the next close (Pagonidis' one-day hold). Ten cells, all on every year of Nasdaq data (period `all`, 2011–Oct 2026), with the same XM-style costs as `ibs-nas`.
+- **Judged:** BROAD if at least 8 of the 10 cells make money after costs, and the median cell makes at least half the tested cell's mean. Otherwise NARROW. On random prices before costs the grid reads NARROW (2 of 10 positive), as it should.
+- One more row in the variant log.

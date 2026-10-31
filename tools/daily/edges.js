@@ -53,6 +53,7 @@ const TESTS = {
   rsi2: { kind: 'mr', rule: 'rsi2', markets: ['nas', 'ger'] },
   'rsi2-nas': { kind: 'mr', rule: 'rsi2', markets: ['nas'] },
   'ibs-spx': { kind: 'mr', rule: 'ibs', markets: ['spx'] },
+  'ibs-nas-grid': { kind: 'grid', markets: ['nas'] },
   'rsi2-spx': { kind: 'mr', rule: 'rsi2', markets: ['spx'] },
   'gold-asia-long': { kind: 'session', dir: 1, start: 19 * 60 + 15, end: 3 * 60, cross: true, markets: ['gold'] },
   'gold-us-short': { kind: 'session', dir: -1, start: 8 * 60 + 20, end: 13 * 60 + 30, cross: false, markets: ['gold'] },
@@ -200,6 +201,26 @@ function runMR(rule, mk, days, cm) {
   return trades;
 }
 
+/** IBS with a chosen threshold and exit: 'hold' = stay in while IBS < th, 'next' = sell the next close. */
+function runIBS(mk, days, cm, th, exitMode) {
+  const trades = [];
+  let pos = -1;
+  for (let i = 0; i < days.length; i++) {
+    const d = days[i];
+    if (pos >= 0) {
+      if (exitMode === 'next' || d.ibs >= th) {
+        trades.push({ market: mk.name, entryDay: days[pos].day, exitDay: d.day, i: pos, j: i, hold: i - pos,
+          entry: days[pos].c, exit: d.c, ret: tradeRet(mk, days, pos, i, cm), nights: dayDiff(days[pos].day, d.day) });
+        pos = -1;
+        if (exitMode === 'next' && inRange(d.day) && d.ibs < th) pos = i;   // a new signal on the exit day starts a new trade
+      }
+      continue;
+    }
+    if (inRange(d.day) && d.ibs < th) pos = i;
+  }
+  return trades;
+}
+
 // ---------- gold session trades ----------
 function runSession(D, t, cm) {
   const trades = [], seen = new Set();
@@ -243,6 +264,30 @@ function placeboSession(D, t, trades, cm) {
 
 // ---------- run ----------
 const CM = CONTROL ? 0 : 1;   // control runs are judged before costs
+if (T.kind === 'grid') {
+  const mk = MK.nas, days = cashDays(loadInst(mk.inst), mk);
+  const cells = [];
+  for (const exitMode of ['hold', 'next']) for (const th of [0.10, 0.15, 0.20, 0.25, 0.30]) {
+    const r = runIBS(mk, days, CM, th, exitMode).map(t => t.ret);
+    cells.push({ exitMode, th, n: r.length, mean: mean(r), t: tstat(r), win: r.filter(x => x > 0).length / (r.length || 1) });
+  }
+  const tested = cells.find(c => c.exitMode === 'hold' && c.th === 0.20);
+  const sorted = [...cells].sort((a, b) => a.mean - b.mean), median = (sorted[4].mean + sorted[5].mean) / 2;
+  const positive = cells.filter(c => c.mean > 0).length;
+  const broad = positive >= 8 && median >= tested.mean / 2;
+  const md = [
+    `# Daily edges — Nasdaq IBS robustness grid (${PERIOD}) · US100Cash#`, '',
+    `**${broad ? 'BROAD' : 'NARROW'}** · ${RANGES.map(([a, b]) => a + ' → ' + b).join(' and ')} · ${CONTROL ? 'random-walk prices, before costs' : 'real 1-minute prices, XM-style costs as tested'}`, '',
+    `Rule written before the run: BROAD if at least 8 of the 10 cells make money after costs and the median cell makes at least half the tested cell's mean. ${positive} of 10 positive; median cell ${P(median, 3)} a trade; tested cell (0.20, hold) ${P(tested.mean, 3)}.`, '',
+    '| IBS below | Exit | Trades | Winners | Mean a trade | t |', '|---|---|---|---|---|---|',
+    ...cells.map(c => `| ${c.th.toFixed(2)} | ${c.exitMode === 'hold' ? 'first close with IBS above the threshold' : 'next close'} | ${c.n} | ${P(c.win)} | ${P(c.mean, 3)} | ${c.t.toFixed(2)} |`),
+  ].join('\n');
+  fs.writeFileSync(args.md || 'verdict.md', md + '\n');
+  console.log(md);
+  if (args.out) fs.writeFileSync(args.out, JSON.stringify({ test: TEST, period: PERIOD, cells, broad }, null, 0));
+  if (args.log && !CONTROL) fs.appendFileSync(args.log, `| ${new Date().toISOString().slice(0, 10)} | ${PERIOD} | ${LABEL} | \`daily-edges ibs-nas-grid\` | 10 cells | median ${P(median, 3)}/trade | — | — | ${broad ? 'BROAD' : 'NARROW'} |\n`);
+  process.exit(0);
+}
 let trades, trades15, randMeans = [], perMarket = {};
 if (T.kind === 'mr') {
   trades = []; trades15 = [];
