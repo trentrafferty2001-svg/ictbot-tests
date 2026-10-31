@@ -265,3 +265,36 @@ What differs from the ICT 2022 model: **no raid or structure shift is required**
 | P5 | Still positive with costs and swaps raised by 50% | Real swaps on CFDs may be worse than modelled |
 
 Each market's own result is reported but not required to pass. **Final (2025–Oct 2026)** runs once, only if the four together pass. Nothing is tuned after a run: other lookbacks (20/10, 100/50...) would be new strategies and new rows in the variant log.
+
+## Noise-area momentum on Nasdaq and DAX (`tools/noise/`): rules written 31 Oct 2026, before any run on real prices
+
+**Why this one.** Trent wants a fully automatic system that trades most days, not a long-term trend system. The only published day-trading rule found with a long, cost-aware record is the noise-area intraday momentum of Zarattini, Aziz and Barbon, *Beat the Market: An Effective Intraday Momentum Strategy for S&P500 ETF (SPY)* (Swiss Finance Institute 24-97, 2024): 2007 to early 2024, 19.6% a year net of costs, Sharpe 1.33. The authors' own result on GLD was a Sharpe of 0.28, so gold isn't tested. Caution written in advance: a 2026 replication of the same authors' opening-range breakout on index CFDs reproduced the gross result but found it net zero after spread (mql5.com blog post 776235). CFD spreads are the main risk here too.
+
+**The strategy** is `tools/noise/noise-momentum.js`, as in the paper, with no settings tried:
+- Cash session only: Nasdaq (`US100Cash#`) 09:30–16:00 New York, DAX (`GER40Cash#`) 09:00–17:30 Frankfurt.
+- Noise area at minute *m* of the session = the average of |close at *m* ÷ open − 1| over the previous 14 sessions. Upper = max(today's open, yesterday's close) × (1 + that); lower = min(open, yesterday's close) × (1 − that).
+- Decisions only on the :00/:30 marks after the open, on that minute's close: above upper → buy, below lower → sell.
+- Exit on the same marks: a buy closes when price is below max(upper, VWAP); a sell when above min(lower, VWAP). A new entry is allowed on a later mark. Everything closes at the session's last minute, so there are no swaps.
+- Size: leverage = min(4, 2% ÷ the standard deviation of the last 14 open-to-close daily returns).
+- HistData's index files have no volume, so VWAP is a time-weighted average *(choice, forced by the data)*.
+
+**Costs (estimates, the same as the ICT runs on these markets):** a round trip costs the cash-session spread plus 0.5 points slippage: Nasdaq 1.5 + 0.5 = 2.0 points, DAX 1.8 + 0.5 = 2.3 points.
+
+**Not the full replay.** This doesn't run `bot-engine.js`: the strategy is a few lines and needs no broker model, so `tools/noise/judge.js` runs it straight on the replay's own price files. Its random benchmark is simpler than `verdict.js`'s: each trade keeps its entry and exit times, size and cost, and gets a random direction (1,000 runs). What's left is the direction's skill.
+
+**Development (2015–2024), judged for each market on its own: all six must hold.**
+
+| | Rule | Why |
+|---|---|---|
+| N1 | At least 300 trades | It should trade most days, so ten years give well over 1,000 |
+| N2 | Mean daily return > 0 after costs, with t ≥ 3 (from daily returns, including days without a trade) | Many strategies have been tried in this repo |
+| N3 | Beats ≥ 95% of random-direction runs | The breakouts must pick the direction better than a coin |
+| N4 | Positive in at least two-thirds of the years with 30+ trades | One lucky year mustn't carry it |
+| N5 | Still positive with costs raised by 50% | Real spreads and slippage are often worse than modelled |
+| N6 | Positive in at least 55% of months | Trent asked for consistency; this is the honest version of it |
+
+**Control (random-walk prices), run with each development run:** judged before costs, because on random prices costs alone make any active rule lose: |t| < 2 and the random-direction percentile between 5% and 95%. On three seeds per market run here before any real run, five of six passed and one DAX seed fell just outside (3.5%), about what chance gives; no bias found.
+
+**Final (2025–Oct 2026)** runs once, only for a market that passed development: at least 100 trades, mean > 0 with t ≥ 1.5, beats 95% of random-direction runs. Nothing is tuned after any run: a different lookback, check interval or stop is a new strategy and a new row in the variant log.
+
+**Counting the tries.** Two rows (Nasdaq, DAX). A pass is a reason to run final and then trade the demo account, not live money.
