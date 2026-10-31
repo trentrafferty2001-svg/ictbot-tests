@@ -1,0 +1,131 @@
+# Daily edges: index mean reversion (IBS, RSI(2)) and gold session timing.
+# Rules: tools/replay/RULES.md, "Daily edges". Added 31 Oct 2026.
+# Start it from Actions → "Daily edges" → Run workflow.
+name: Daily edges
+
+on:
+  # Pushing a change to tools/daily/RUN starts the run it names (line 1: period, line 2: tests).
+  push:
+    paths: ["tools/daily/RUN"]
+  workflow_dispatch:
+    inputs:
+      period:
+        description: "development = 2015-2024 (the test) · final = 2025-Oct 2026 (ONCE, only for tests that passed development)"
+        type: choice
+        options: [development, final]
+        default: development
+      tests:
+        description: "Space-separated tests: ibs-nas ibs-ger rsi2 gold-asia-long gold-us-short"
+        default: "ibs-nas ibs-ger rsi2 gold-asia-long gold-us-short"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-edges-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      years: ${{ steps.p.outputs.years }}
+      period: ${{ steps.p.outputs.period }}
+      tests: ${{ steps.p.outputs.tests }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: p
+        run: |
+          PERIOD="${{ inputs.period }}"; TESTS="${{ inputs.tests }}"
+          if [ -z "$PERIOD" ]; then PERIOD=$(sed -n 1p tools/daily/RUN | tr -d '[:space:]'); TESTS=$(sed -n 2p tools/daily/RUN); fi
+          echo "period=$PERIOD" >> "$GITHUB_OUTPUT"; echo "tests=$TESTS" >> "$GITHUB_OUTPUT"
+          case "$PERIOD" in
+            development) Y='["2014","2015","2016","2017","2018","2019","2020","2021","2022","2023","2024"]' ;;
+            final)       Y='["2024","2025","2026"]' ;;
+          esac
+          echo "years=$Y" >> "$GITHUB_OUTPUT"
+
+  prices:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 12
+      matrix:
+        inst: [nsxusd, grxeur, xauusd]
+        year: ${{ fromJSON(needs.plan.outputs.years) }}
+    steps:
+      - uses: actions/checkout@v4
+      # Same file names and cache keys as the replay workflow, so earlier downloads are reused.
+      - uses: actions/cache@v4
+        with:
+          path: tools/replay/data/${{ matrix.inst }}-${{ matrix.year }}.csv.gz
+          key: ${{ matrix.inst }}-m1-${{ matrix.year }}-v3
+      - name: Download (skipped if cached)
+        run: |
+          F="tools/replay/data/${{ matrix.inst }}-${{ matrix.year }}.csv.gz"
+          [ -s "$F" ] && { echo "cached"; exit 0; }
+          Y=${{ matrix.year }}
+          TO="$((Y+1))-01-03"
+          [ "$Y" = "2026" ] && TO="$(date -u +%Y-%m-%d)"
+          python3 tools/replay/fetch_data.py --instrument "${{ matrix.inst }}" --from "$(date -u -d "$Y-01-01 -75 days" +%Y-%m-%d)" --to "$TO" --name "$Y"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: px-${{ matrix.inst }}-${{ matrix.year }}
+          path: tools/replay/data/${{ matrix.inst }}-${{ matrix.year }}.csv.gz
+          retention-days: 3
+
+  judge:
+    needs: [plan, prices]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: actions/download-artifact@v4
+        with:
+          path: px
+          pattern: px-*
+          merge-multiple: true
+      - name: Data check
+        run: ls -la px
+      - name: Controls (random prices, before costs)
+        if: needs.plan.outputs.period == 'development'
+        run: |
+          for T in ${{ needs.plan.outputs.tests }}; do
+            node tools/daily/edges.js --test "$T" --period control --seed 1 --label "$T-control" --md "control-$T.md"
+            cat "control-$T.md" >> "$GITHUB_STEP_SUMMARY"
+          done
+      - name: Verdicts
+        run: |
+          mkdir -p out
+          for T in ${{ needs.plan.outputs.tests }}; do
+            node tools/daily/edges.js --test "$T" --period "${{ needs.plan.outputs.period }}" --data px --label "$T" \
+              --md "out/$T.md" --out "out/$T.json" --log tools/replay/VARIANTS.md
+            cat "out/$T.md" >> "$GITHUB_STEP_SUMMARY"
+          done
+      - name: Save verdicts and the run log
+        run: |
+          git config user.name "replay-bot"
+          git config user.email "replay-bot@users.noreply.github.com"
+          git diff -U0 -- tools/replay/VARIANTS.md | grep '^+|' | sed 's/^+//' > rows.txt || true
+          for i in 1 2 3 4 5; do
+            if git fetch -q origin "$GITHUB_REF_NAME" && git reset -q --hard FETCH_HEAD; then
+              while IFS= read -r ROW; do grep -qxF -- "$ROW" tools/replay/VARIANTS.md || printf '%s\n' "$ROW" >> tools/replay/VARIANTS.md; done < rows.txt
+              mkdir -p verdicts
+              for F in out/*.md; do
+                B=$(basename "$F" .md)
+                cp "$F" "verdicts/edges-$B-${{ needs.plan.outputs.period }}-${{ github.run_id }}.md"
+                gzip -c "out/$B.json" > "verdicts/edges-$B-${{ needs.plan.outputs.period }}-${{ github.run_id }}.json.gz"
+              done
+              git add tools/replay/VARIANTS.md verdicts
+              git commit -q -m "Verdicts: daily edges (${{ needs.plan.outputs.period }}) [skip ci] [skip render]" || exit 0
+              git push -q origin HEAD:"$GITHUB_REF_NAME" && exit 0
+            fi
+            sleep $((i * 5))
+          done
+          exit 1

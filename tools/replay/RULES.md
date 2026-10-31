@@ -305,3 +305,45 @@ Each market's own result is reported but not required to pass. **Final (2025–O
 - **The question here is only the cost.** The same strategy, the same Nasdaq prices, nothing else changed. A round trip in Micro E-mini Nasdaq futures (MNQ, $2 a point) is charged **1.5 points**: one tick of spread (0.25, the usual US-session spread), about $1.82 of round-trip fees and commission (0.91 points; a broker list of all-in micro costs), and about one tick of slippage, rounded up. Costs × 1.5 (N5) is then 2.25 points, about XM's.
 - **This is not a blind test**: the gross result is already known from the `nas` run, so the outcome is partly arithmetic. It answers "would the signal pay at the cheapest realistic costs", not "is there a signal". Judged by N1–N6 as written above. A pass would also need a futures broker the bot can reach through MT5, and an account big enough that one micro contract isn't oversized: neither is checked here.
 - One more row in the variant log.
+
+## Daily edges (`tools/daily/edges.js`): rules written 31 Oct 2026, before any run on real prices
+
+**Why these.** Trent wants a fully automatic system that trades most days and wins more often than it loses. After every intraday test above failed on costs, a research pass (sources in the report linked from the PR) found two families with a structural reason to exist and a cost small enough to test on XM:
+- **Short-term mean reversion in stock indices.** Daily and weekly index returns have reversed since about 2000 (Baltussen, van Bekkum and Da, *Indexing and stock market serial dependence around the world*, JFE 2019). Two published, fully specified rules are tested, each exactly as published: internal bar strength (Pagonidis, *The IBS effect*, 2013) and Connors' RSI(2) (*Short Term Trading Strategies That Work*, 2008). Both win 60–75% of trades in published tests, which is the win rate Trent asked for.
+- **Gold's session pattern.** Gold has tended to rise in Asian hours and fall in US hours: the World Gold Council's H1 2026 review measured +13% in Asian hours and −15% in US hours; London fix data show the same split back to 1970 (part of it blamed on fix manipulation before 2015). Both legs trade every day and close inside one XM day, so they pay no swap.
+- **Not tested, with reasons:** the US-futures overnight drift (Boyarchenko, Larsen and Whelan, RFS 2023) earned about 1.5 basis points a day before costs, its authors found it unprofitable after futures spreads, and it has been flat since 2021 (NY Fed, July 2026). Turn-of-the-month has been insignificant in US ETFs since about 2015 in recent replications.
+
+**The five tests.** Each is run once on development (2015–2024) exactly as written. Nothing is tuned after a run; a changed rule is a new test and a new row in the variant log.
+
+1. **`ibs-nas`, `ibs-ger`: IBS < 0.2, long only.** Daily bar = the cash session up to 5 minutes before its close (Nasdaq 09:30–15:55 New York, DAX 09:00–17:25 Frankfurt). IBS = (close − low) ÷ (high − low). If IBS < 0.2, buy at that close. Hold while each later close still has IBS < 0.2; sell at the first close with IBS ≥ 0.2 *(choice: Pagonidis measures the next day's close; holding on through further low-IBS days avoids paying the spread twice for one position)*. No stop.
+2. **`rsi2`: Connors RSI(2), long only, Nasdaq and DAX judged together.** Same daily bars. Buy at the close when the close is above its 200-day average and the 2-period RSI (Wilder's smoothing) is below 5. Sell at the first close above the 5-day average. No stop.
+3. **`gold-asia-long`.** Buy gold at 19:15 New York, Sunday to Thursday evenings, and sell at 03:00 New York the next morning (08:00 in London: the London open). *(choice: 19:15 rather than the 18:05 reopen, to stay clear of the post-break and Monday-open spreads.)*
+4. **`gold-us-short`.** Sell gold at 08:20 New York (COMEX day-session open) and buy it back at 13:30 New York (COMEX day-session close), Monday to Friday.
+
+**Costs.**
+- Index tests: the spread at the decision minute (Nasdaq 1.5 points, DAX 1.8 points: the replay's estimates for XM's cash session), plus 0.5 points slippage a round trip, plus a long swap of 0.025% of price a night held (about 9% a year; a comparable broker's US 500 Cash CFD charges 8.6% a year). Fridays to Mondays count as three nights.
+- Gold tests: the replay's XM gold spread at the minute it is paid (buys pay on entry, sells on exit: $0.28 at both 19:15 and 13:30 New York in that model) plus $0.10 slippage. No swap.
+- Prices are bid (HistData 1-minute), so buys pay the spread.
+
+**Random benchmarks.**
+- Index tests: each trade is matched by a long entry on a random session of the same calendar year, held for the same number of sessions, with the same costs and swaps; 1,000 runs. Indices rose over the decade, so this asks whether the signal adds anything to simply being long that often.
+- Gold tests: each day's trade is matched by a window of the same length and direction starting at a random minute of the same XM day (18:05–16:55 New York); 1,000 runs. This asks whether the hours matter, not just being long or short gold.
+
+**Development (2015–2024): all must hold.**
+
+| | Index tests (M) | Gold tests (G) |
+|---|---|---|
+| 1 | At least 100 trades | At least 300 trades |
+| 2 | Mean return a trade > 0 after costs and swaps, t ≥ 2.5 | Mean return a day > 0 after costs, t ≥ 3 |
+| 3 | Beats ≥ 95% of the random benchmark | Beats ≥ 95% of the random benchmark |
+| 4 | Positive in ≥ 60% of years with 5+ trades | Positive in ≥ 2/3 of years with 30+ trades |
+| 5 | Still positive with costs and swaps × 1.5 | Still positive with costs × 1.5 |
+| 6 | — | Positive in ≥ 55% of months |
+
+Win rate, average win and loss, profit factor, worst drawdown and return at 1× size are reported for all, but don't decide a pass: a high win rate with a negative mean is a loss.
+
+**Control (random-walk prices, judged before costs), run with each development run:** a long-only rule on one random path inherits that path's trend, so the control asks whether the rule beats its own random benchmark: |z| < 2 against the benchmark's median, and the benchmark percentile between 5% and 95%. Run here on three seeds per test before any real run: 13 of 15 passed; the two misses (Nasdaq IBS at 98.0%, RSI(2) at 3.2%) point opposite ways, about what chance gives for 15 two-sided checks.
+
+**Final (2025–Oct 2026)** runs once, only for a test that passed development: at least 30 trades for an index test or 200 for a gold test, mean > 0 after costs with t ≥ 1.5, and beats ≥ 90% of its random benchmark.
+
+**Counting the tries.** Five more rows. With the thresholds above the chance that at least one passes by luck is roughly 1 in 20; a pass is a reason for its final test, then demo trading, not live money.
