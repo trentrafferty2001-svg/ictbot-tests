@@ -49,3 +49,4 @@ Every replay run, in order. The number of rows is the number of tries — the mo
 | 2026-10-30 | screen | hold-1h | `{"V1_MAX_HOLD_HOURS":"1"}` | 1716 | -0.023 | -1.06 | 97.8% | SCREEN FAIL |
 | 2026-10-31 | development | noise-nas | `noise-area nas` | 2570 | 0.021%/day | 0.93 | 100.0% | FAIL |
 | 2026-10-31 | development | noise-ger | `noise-area ger` | 3342 | -0.072%/day | -2.92 | 97.2% | FAIL |
+| 2026-10-31 | development | noise-mnq | `noise-area mnq` | 2570 | 0.038%/day | 1.73 | 100.0% | FAIL |
