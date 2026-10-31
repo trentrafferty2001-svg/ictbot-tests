@@ -59,3 +59,4 @@ Every replay run, in order. The number of rows is the number of tries — the mo
 | 2026-10-31 | oos | rsi2-nas | `daily-edges rsi2-nas` | 18 | 0.529%/trade | 1.15 | 80.5% | FAIL |
 | 2026-10-31 | development | ibs-spx | `daily-edges ibs-spx` | 350 | 0.091%/trade | 1.21 | 95.2% | FAIL |
 | 2026-10-31 | all | rsi2-spx | `daily-edges rsi2-spx` | 69 | 0.328%/trade | 1.60 | 91.0% | FAIL |
+| 2026-10-31 | all | ibs-nas-grid | `daily-edges ibs-nas-grid` | 10 cells | median 0.169%/trade | — | — | BROAD |
