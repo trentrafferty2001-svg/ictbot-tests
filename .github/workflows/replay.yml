@@ -145,7 +145,9 @@ jobs:
           if [ "${{ inputs.period }}" = "control" ]; then
             EXTRA="$EXTRA --synthetic --seed ${{ matrix.part }}"
           elif [ "${{ inputs.period }}" = "portfolio-control" ]; then
-            EXTRA="$EXTRA --synthetic --seed 2019"
+            # its own random prices per market (2026-10-31: one shared seed made the
+            # ten markets copies of one path, so the control had ~7 real trades)
+            EXTRA="$EXTRA --synthetic --seed $(( 2019 + $(echo -n "$MK" | cksum | cut -d' ' -f1) % 100000 ))"
           else
             EXTRA="$EXTRA --data tools/replay/data/$INST-$P.csv.gz"
           fi
