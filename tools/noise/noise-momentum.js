@@ -16,6 +16,9 @@
 
 const MARKETS = {
   nas: { name: 'US100Cash#', tz: 'America/New_York', open: '09:30', close: '16:00', spread: 1.5, slippage: 0.5 },
+  // Micro E-mini Nasdaq futures, same index prices. 0.25 = one tick (the usual US-session spread);
+  // 1.25 = about $1.82 round-trip fees ($2 a point) plus one tick of slippage. Added 31 Oct 2026.
+  mnq: { name: 'MNQ (micro futures)', tz: 'America/New_York', open: '09:30', close: '16:00', spread: 0.25, slippage: 1.25 },
   ger: { name: 'GER40Cash#', tz: 'Europe/Berlin',    open: '09:00', close: '17:30', spread: 1.8, slippage: 0.5 },
 };
 const DEFAULTS = { lookbackDays: 14, checkEveryMin: 30, volTargetDaily: 0.02, maxLeverage: 4, costMult: 1 };

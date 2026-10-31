@@ -298,3 +298,10 @@ Each market's own result is reported but not required to pass. **Final (2025–O
 **Final (2025–Oct 2026)** runs once, only for a market that passed development: at least 100 trades, mean > 0 with t ≥ 1.5, beats 95% of random-direction runs. Nothing is tuned after any run: a different lookback, check interval or stop is a new strategy and a new row in the variant log.
 
 **Counting the tries.** Two rows (Nasdaq, DAX). A pass is a reason to run final and then trade the demo account, not live money.
+
+### Written 31 Oct 2026, after the Nasdaq and DAX runs failed, before this one: Nasdaq at micro-futures costs (`mnq`)
+
+- What failed: on XM's estimated CFD costs, Nasdaq made 4.46 points a trade before costs and beat 100% of random-direction runs, but 2.46 after a 2-point round trip was too little (t 0.93, Sharpe 0.29, 53% drawdown). DAX made under a point before costs.
+- **The question here is only the cost.** The same strategy, the same Nasdaq prices, nothing else changed. A round trip in Micro E-mini Nasdaq futures (MNQ, $2 a point) is charged **1.5 points**: one tick of spread (0.25, the usual US-session spread), about $1.82 of round-trip fees and commission (0.91 points; a broker list of all-in micro costs), and about one tick of slippage, rounded up. Costs × 1.5 (N5) is then 2.25 points, about XM's.
+- **This is not a blind test**: the gross result is already known from the `nas` run, so the outcome is partly arithmetic. It answers "would the signal pay at the cheapest realistic costs", not "is there a signal". Judged by N1–N6 as written above. A pass would also need a futures broker the bot can reach through MT5, and an account big enough that one micro contract isn't oversized: neither is checked here.
+- One more row in the variant log.

@@ -18,7 +18,7 @@ const market = args.market || 'nas';
 const period = args.period || 'development';
 const label = args.label || `noise-${market}`;
 const mk = MARKETS[market];
-const INST = { nas: 'nsxusd', ger: 'grxeur' }[market];
+const INST = { nas: 'nsxusd', mnq: 'nsxusd', ger: 'grxeur' }[market];
 const PERIODS = {
   development: ['2015-01-01', '2025-01-01'],
   final: ['2025-01-01', '2026-11-01'],

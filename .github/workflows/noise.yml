@@ -1,11 +1,9 @@
 # Noise-area intraday momentum (Zarattini, Aziz & Barbon 2024) on Nasdaq and DAX.
 # Rules: tools/replay/RULES.md, "Noise-area momentum". Added 31 Oct 2026.
-# Runs by itself when tools/noise/ changes; or Actions → "Noise-area momentum" → Run workflow.
+# Start it from Actions → "Noise-area momentum" → Run workflow.
 name: Noise-area momentum
 
 on:
-  push:
-    paths: ["tools/noise/**", ".github/workflows/noise.yml"]
   workflow_dispatch:
     inputs:
       period:
@@ -16,7 +14,7 @@ on:
       markets:
         description: "Which markets"
         type: choice
-        options: [both, nas, ger]
+        options: [both, nas, ger, mnq]
         default: both
 
 permissions:
@@ -42,9 +40,10 @@ jobs:
             final)       Y='["2025","2026"]' ;;
             smoke)       Y='["2024"]' ;;
           esac
-          case "${{ inputs.markets || 'both' }}" in
+          SEL="${{ inputs.markets }}"
+          case "${SEL:-both}" in
             both) M='["nas","ger"]' ;;
-            *)    M='["${{ inputs.markets }}"]' ;;
+            *)    M="[\"$SEL\"]" ;;
           esac
           echo "years=$Y" >> "$GITHUB_OUTPUT"; echo "markets=$M" >> "$GITHUB_OUTPUT"; echo "period=$PERIOD" >> "$GITHUB_OUTPUT"
 
@@ -59,7 +58,7 @@ jobs:
         market: ${{ fromJSON(needs.plan.outputs.markets) }}
         year: ${{ fromJSON(needs.plan.outputs.years) }}
     env:
-      INST: ${{ fromJSON('{"nas":"nsxusd","ger":"grxeur"}')[matrix.market] }}
+      INST: ${{ fromJSON('{"nas":"nsxusd","mnq":"nsxusd","ger":"grxeur"}')[matrix.market] }}
     steps:
       - uses: actions/checkout@v4
       # Same file names and cache keys as the replay workflow, so its downloads are reused.
