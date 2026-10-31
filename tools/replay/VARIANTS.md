@@ -49,3 +49,4 @@ Every replay run, in order. The number of rows is the number of tries — the mo
 | 2026-10-30 | screen | hold-1h | `{"V1_MAX_HOLD_HOURS":"1"}` | 1716 | -0.023 | -1.06 | 97.8% | SCREEN FAIL |
 | 2026-10-30 | control | trend-50d-control | `{"V1_STRATEGY":"ea","V1_EA":"trend-50d","V1_MAX_LOTS":"10"}` | 70 | -0.325 | -3.22 | 0.0% | FAIL |
 | 2026-10-31 | control | trend-50d-control-v2 | `{"V1_STRATEGY":"ea","V1_EA":"trend-50d","V1_MAX_LOTS":"10"}` | 73 | +0.138 | 0.66 | — | PASS |
+| 2026-10-31 | portfolio | trend-50d | `{"V1_STRATEGY":"ea","V1_EA":"trend-50d","V1_MAX_LOTS":"10"}` | 335 | -0.072 | -0.57 | 0.0% | FAIL |
