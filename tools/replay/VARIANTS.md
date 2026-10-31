@@ -50,3 +50,8 @@ Every replay run, in order. The number of rows is the number of tries — the mo
 | 2026-10-31 | development | noise-nas | `noise-area nas` | 2570 | 0.021%/day | 0.93 | 100.0% | FAIL |
 | 2026-10-31 | development | noise-ger | `noise-area ger` | 3342 | -0.072%/day | -2.92 | 97.2% | FAIL |
 | 2026-10-31 | development | noise-mnq | `noise-area mnq` | 2570 | 0.038%/day | 1.73 | 100.0% | FAIL |
+| 2026-10-31 | development | ibs-nas | `daily-edges ibs-nas` | 354 | 0.207%/trade | 2.25 | 99.2% | FAIL |
+| 2026-10-31 | development | ibs-ger | `daily-edges ibs-ger` | 329 | -0.196%/trade | -2.30 | 11.3% | FAIL |
+| 2026-10-31 | development | rsi2 | `daily-edges rsi2` | 83 | 0.507%/trade | 2.46 | 90.1% | TOO FEW TRADES |
+| 2026-10-31 | development | gold-asia-long | `daily-edges gold-asia-long` | 2523 | -0.013%/day | -1.74 | 86.6% | FAIL |
+| 2026-10-31 | development | gold-us-short | `daily-edges gold-us-short` | 2440 | -0.018%/day | -1.43 | 79.0% | FAIL |
