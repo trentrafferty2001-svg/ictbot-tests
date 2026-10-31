@@ -57,3 +57,5 @@ Every replay run, in order. The number of rows is the number of tries — the mo
 | 2026-10-31 | development | gold-us-short | `daily-edges gold-us-short` | 2440 | -0.018%/day | -1.43 | 79.0% | FAIL |
 | 2026-10-31 | oos | ibs-nas | `daily-edges ibs-nas` | 204 | 0.189%/trade | 1.69 | 95.3% | FAIL |
 | 2026-10-31 | oos | rsi2-nas | `daily-edges rsi2-nas` | 18 | 0.529%/trade | 1.15 | 80.5% | FAIL |
+| 2026-10-31 | development | ibs-spx | `daily-edges ibs-spx` | 350 | 0.091%/trade | 1.21 | 95.2% | FAIL |
+| 2026-10-31 | all | rsi2-spx | `daily-edges rsi2-spx` | 69 | 0.328%/trade | 1.60 | 91.0% | FAIL |
