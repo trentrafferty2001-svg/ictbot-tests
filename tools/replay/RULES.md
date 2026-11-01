@@ -383,3 +383,13 @@ Win rate, average win and loss, profit factor, worst drawdown and return at 1× 
 - **Control.** The same test on shuffled days must not pass, judged before costs. Each day's open, high, low and close are taken relative to the previous close and put in random order, which keeps the IBS signals but removes any link to the next day. If the control passes, the test is broken and Test B doesn't count.
 - **What a result changes.** A PASS would mean the rule also worked before 2011. It wouldn't make it a candidate for real money: `ibs-nas` failed its confirmation run and stays dropped. A FAIL would add to the case against it. Either way, the crash years show how hard it can lose at 1× size.
 - One more row in the variant log (Test B). Check A is a diagnostic.
+
+### Written 1 Nov 2026, before fetching the data: the same dip rule on Bitcoin (`btc-ibs`)
+
+- **Why.** Trent wants the bot to trade Bitcoin too. The Nasdaq dip rule is the only rule that has held up here, so the first question is whether it carries over unchanged. Bitcoin's own research mostly points the other way (momentum over days to weeks, e.g. Liu and Tsyvinski), so a fail is the expected result.
+- **Data.** BTC/USD daily bars from Twelve Data (UTC days), fetched through its Claude connector on 1 Nov 2026 and saved in `tools/daily/btc/`.
+- **Rule.** Exactly `ibs-nas` on daily bars: buy at the day's close when IBS < 0.20 and no trade is open; sell at the first close with IBS ≥ 0.20. Long only.
+- **Costs.** A flat 0.10% a trade (a Bitcoin CFD spread of roughly 0.03–0.06% plus slippage, with room for error), no overnight fee: Exness and Octa charge none on crypto, and XM's crypto swap is unknown until `/costs`. Results before costs are reported too.
+- **Judged.** PASS if, over every year of data, the mean trade after costs is above zero with t ≥ 2.0 and beats at least 95% of 1,000 sets of random entries held just as long, and the last three years (Nov 2023 – Oct 2026) are also positive after costs. Otherwise FAIL.
+- **Control.** The same test on shuffled days, judged before costs, must not pass; if it does, the test is broken and doesn't count.
+- One more row in the variant log.
