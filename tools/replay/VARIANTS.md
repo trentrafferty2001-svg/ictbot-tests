@@ -61,3 +61,4 @@ Every replay run, in order. The number of rows is the number of tries — the mo
 | 2026-10-31 | all | rsi2-spx | `daily-edges rsi2-spx` | 69 | 0.328%/trade | 1.60 | 91.0% | FAIL |
 | 2026-10-31 | all | ibs-nas-grid | `daily-edges ibs-nas-grid` | 10 cells | median 0.169%/trade | — | — | BROAD |
 | 2026-10-31 | 1999-2010 | qqq-ibs | `qqq_ibs.py, QQQ daily, cost 0.08%` | 531 | +0.240%/trade | 2.39 | 99.8% | PASS |
+| 2026-11-01 | all | btc-ibs | `btc_ibs.py, BTC/USD daily, cost 0.10%` | 441 | +0.191%/trade | 0.98 | 75.1% | FAIL |
