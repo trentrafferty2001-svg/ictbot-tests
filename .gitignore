@@ -4,3 +4,8 @@ results/
 ea-export/
 *.log
 .env
+quantlab_data/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
