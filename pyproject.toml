@@ -1,0 +1,23 @@
+[project]
+name = "quantlab"
+version = "0.1.0"
+description = "Cost-aware, pre-registered research, backtesting, cost capture and demo-only execution for the XM/MetaApi bot"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "PyYAML>=6.0",
+    "requests>=2.28",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.scripts]
+quantlab = "quantlab.cli:main"
+
+[tool.setuptools]
+packages = ["quantlab"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/quantlab"]
