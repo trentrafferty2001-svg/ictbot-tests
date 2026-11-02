@@ -1,0 +1,120 @@
+# Pre-registered test: Nasdaq 100 internal bar strength (IBS), long only.
+#
+# Written 2026-11-02, before any run of THIS config. Rules, cost model, sample
+# split and pass/fail thresholds below are fixed. Changing any of them after a
+# run is a new config with a new `id` (and a new row in the trial count), not an
+# edit to this one. `quantlab backtest` refuses to run this file unless it is
+# committed and unmodified in git, and refuses a second config hash under the
+# same id.
+#
+# Known contamination, stated up front:
+#  - Earlier work (61 logged runs, outside this repo) already measured an IBS
+#    rule on Nasdaq at about +0.20% a trade after modelled costs, and it failed
+#    its confirmation bar. These thresholds were written knowing that number.
+#  - IBS mean reversion on US indices is widely published. The 2015-2026
+#    history is therefore NOT clean out-of-sample data, whatever split is used.
+#  - The only clean out-of-sample evidence is the forward log and demo fills
+#    recorded after this file is committed (the `forward` section).
+
+id: ibs-nasdaq-v1
+registered_at: "2026-11-02"
+# Set to "registered" (and commit) to sign it off. While "draft", backtest only
+# runs with --dry-run, and a dry run is never written as evidence.
+status: draft
+hypothesis: >
+  When Nasdaq 100 closes the 09:30-15:55 New York session in the bottom 20% of
+  that session's range, buying at 15:55 and selling at the next session's 15:55
+  earns more than costs and more than random long entries held as long.
+
+market:
+  name: Nasdaq 100
+  backtest_signal_and_price: NSXUSD 1-minute bars (tools/replay/fetch_data.py --instrument nsxusd)
+  backtest_data_file: tools/replay/data/nsxusd-ibs.csv.gz
+  forward_signal: QQQ 5-minute bars (Twelve Data)
+  execution_symbol: "US100Cash#"
+  timezone: America/New_York
+
+timeframe:
+  backtest_bar_minutes: 1
+  forward_bar_minutes: 5
+  session_open: "09:30"
+  decision_time: "15:55"
+  # A day is used only if at least this share of the expected bars between
+  # session_open and decision_time exist; otherwise it is skipped and counted.
+  min_bar_coverage: 0.8
+
+entry_rule:
+  type: ibs_below
+  # IBS = (P - L) / (H - L). H and L: high and low of the bars that START at or
+  # after session_open and before decision_time. P: close of the last of those
+  # bars (the price at decision_time). Days with H == L are skipped.
+  threshold: 0.20
+  direction: long
+  # One position at a time; no adding, no averaging down, no grid, no martingale.
+  max_positions: 1
+
+exit_rule:
+  type: time
+  # Sell at the next trading day's decision_time price. If the entry rule fires
+  # again at that same decision_time, the position is kept (no exit, no new
+  # cost) and the exit moves one trading day, up to holding_period.max_days.
+  extend_if_signal_repeats: true
+
+holding_period:
+  min_days: 1
+  max_days: 5
+
+position:
+  # Notional = 1x account equity. No stop-loss (none was part of the rule).
+  leverage: 1.0
+
+cost_model:
+  name: xm-us100-estimate-2026-11-02
+  # Estimates, written before any run, to be checked against `quantlab costs`.
+  # A measured cost model is a NEW config id; both results stay on record.
+  spread_points: 1.5               # US100Cash# at 15:55 New York (cash session)
+  slippage_points_per_side: 0.5
+  commission_pct_per_side: 0.0     # XM index CFDs: assumed no commission
+  swap_long_annual_pct: 7.0        # financing charged per calendar night held, 360-day year
+  swap_day_count: 360
+  # Robustness: everything above multiplied by this must still be profitable.
+  stress_multiplier: 1.5
+  # R for a rule with no stop: 1R = mean (H - L) / P of the last 14 sessions
+  # (09:30-15:55 ranges) at entry. Reporting unit only; not used in any rule.
+  r_unit: atr14_session_range_pct
+
+sample_split:
+  in_sample: ["2015-01-01", "2020-12-31"]        # reported, not used for pass/fail
+  out_of_sample: ["2021-01-01", "2026-10-30"]    # historical pass/fail (contaminated, see top)
+  forward_start: "2026-11-03"                    # clean out-of-sample begins here
+
+random_controls:
+  count: 1000
+  seed: 20261102
+  # Each control run: the same number of trades and the same holding lengths
+  # (in trading days) as the strategy in the same period, at random
+  # non-overlapping entry days, long only, same cost model.
+  method: matched_holding_long_only
+
+multiple_testing:
+  prior_trials: 61       # runs already logged before this config (stated by the owner)
+  alpha: 0.05
+
+pass_thresholds:
+  historical:            # all evaluated on out_of_sample unless stated
+    H1_min_trades: 150                    # fewer -> "Insufficient evidence"
+    H2_min_mean_net_pct: 0.0              # mean net return per trade must be > this
+    H2_min_t: 2.0                         # and t-stat >= this
+    H3_min_random_percentile: 95          # beats >= 95% of the 1,000 random controls
+    H4_min_positive_year_share: 0.6       # full sample, years with >= H4_min_trades_per_year
+    H4_min_trades_per_year: 20
+    H5_stressed_mean_net_pct_above: 0.0   # still > 0 with costs x stress_multiplier
+    H6_max_drawdown_pct: 25.0             # at 1x, compounded, measured at trade exits
+    min_day_coverage: 0.7                 # share of weekdays with a usable snapshot
+  forward:               # demo fills / forward log after forward_start
+    F1_min_closed_trades: 50              # fewer -> "Insufficient evidence"
+    F2_min_mean_net_pct: 0.0              # demo mean net per trade (actual fills, swap, commission) > this
+    F3_max_cost_ratio: 1.5                # actual cost per trade <= 1.5x the modelled cost
+    F4_config_unchanged: true             # same config hash for the whole forward period
+  # Real money requires a historical Pass AND a forward Pass AND an explicit
+  # decision by the owner. This system never switches it on.
