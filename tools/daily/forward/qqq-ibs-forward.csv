@@ -5,3 +5,4 @@ date,ibs_1555,close_1555,action,position,entry_date,entry_price,trade_return,tra
 2026-11-04,0.240,691.14,NONE,FLAT,,,,,live
 2026-11-05,0.113,651.53,BUY,LONG,2026-11-05,651.53,,,live
 2026-11-06,0.179,655.87,HOLD,LONG,2026-11-05,651.53,,,live
+2026-11-09,0.878,679.29,SELL,FLAT,2026-11-05,651.53,0.04261,0.04181,live
